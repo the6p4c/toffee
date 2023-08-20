@@ -1,26 +1,31 @@
 use eframe::egui;
 
-pub struct ToffeeData<'a, Entry> {
+pub struct ToffeeData<'a, Entry: 'a, EntryIter>
+where
+    EntryIter: IntoIterator<Item = &'a Entry>,
+{
     pub mode: &'a str,
     pub counter: Option<(usize, usize)>,
-    pub entries: &'a [Entry],
+    pub entries: EntryIter,
 }
 
-pub struct Toffee<'a, Entry, EntryWidget>
+pub struct Toffee<'a, Entry, EntryIter, EntryWidget>
 where
-    EntryWidget: Fn(&mut egui::Ui, &Entry),
+    EntryIter: IntoIterator<Item = &'a Entry>,
+    EntryWidget: Fn(&mut egui::Ui, &Entry) -> egui::Response,
 {
-    data: ToffeeData<'a, Entry>,
+    data: ToffeeData<'a, Entry, EntryIter>,
     input: &'a mut dyn egui::TextBuffer,
     entry_widget: EntryWidget,
 }
 
-impl<'a, Entry, EntryWidget> Toffee<'a, Entry, EntryWidget>
+impl<'a, Entry, EntryIter, EntryWidget> Toffee<'a, Entry, EntryIter, EntryWidget>
 where
-    EntryWidget: Fn(&mut egui::Ui, &Entry),
+    EntryIter: IntoIterator<Item = &'a Entry>,
+    EntryWidget: Fn(&mut egui::Ui, &Entry) -> egui::Response,
 {
     pub fn new(
-        data: ToffeeData<'a, Entry>,
+        data: ToffeeData<'a, Entry, EntryIter>,
         input: &'a mut dyn egui::TextBuffer,
         entry_widget: EntryWidget,
     ) -> Self {
@@ -32,12 +37,35 @@ where
     }
 }
 
-impl<Entry, EntryWidget> egui::Widget for Toffee<'_, Entry, EntryWidget>
+impl<'a, Entry, EntryIter, EntryWidget> egui::Widget for Toffee<'a, Entry, EntryIter, EntryWidget>
 where
-    EntryWidget: Fn(&mut egui::Ui, &Entry),
+    EntryIter: IntoIterator<Item = &'a Entry>,
+    EntryWidget: Fn(&mut egui::Ui, &Entry) -> egui::Response,
 {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
         let data = self.data;
+
+        let selected_index_delta = ui.input(|i| {
+            if i.key_pressed(egui::Key::ArrowUp) {
+                -1
+            } else if i.key_pressed(egui::Key::ArrowDown) {
+                1
+            } else {
+                0
+            }
+        });
+
+        let selected_index: usize = ui
+            .memory(|m| m.data.get_temp(egui::Id::new("selected_index")))
+            .unwrap_or_default();
+        let selected_index_changed = selected_index_delta != 0;
+        if selected_index_changed {
+            let selected_index = selected_index.wrapping_add_signed(selected_index_delta);
+            ui.memory_mut(|m| {
+                m.data
+                    .insert_temp(egui::Id::new("selected_index"), selected_index)
+            });
+        }
 
         let resp = egui::TopBottomPanel::top("query")
             .frame(egui::Frame::none())
@@ -69,7 +97,7 @@ where
             .inner;
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::none())
+            //.frame(egui::Frame::none()) // TODO: we want this, but it causes an overlap
             .show_inside(ui, |ui| {
                 // remove vertical gaps between each result
                 ui.style_mut().spacing.item_spacing.y = 0.0;
@@ -77,18 +105,23 @@ where
                 egui::ScrollArea::vertical()
                     .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
                     .show(ui, |ui| {
+                        ui.set_min_width(ui.max_rect().width());
                         ui.vertical(|ui| {
-                            for (index, entry) in data.entries.iter().enumerate() {
-                                let fill_style =
-                                    EntryContainerFillStyle::from_selected_index(index, 1);
+                            for (index, entry) in data.entries.into_iter().enumerate() {
+                                let fill_style = EntryContainerFillStyle::from_selected_index(
+                                    index,
+                                    selected_index,
+                                );
                                 EntryContainer::new(fill_style).show(ui, |ui| {
-                                    (self.entry_widget)(ui, entry);
+                                    let widget = (self.entry_widget)(ui, entry);
+                                    if selected_index_changed && selected_index == index {
+                                        widget.scroll_to_me(None);
+                                    }
                                 });
                             }
                         });
                     });
             });
-
         resp
     }
 }
@@ -121,13 +154,15 @@ impl EntryContainer {
     }
 
     fn show<R>(self, ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui) -> R) -> R {
+        let visuals = &ui.style().visuals;
         let fill = match self.fill_style {
             EntryContainerFillStyle::Selected => egui::Color32::BLUE,
-            EntryContainerFillStyle::Even => egui::Color32::RED,
-            EntryContainerFillStyle::Odd => egui::Color32::GREEN,
+            EntryContainerFillStyle::Even => visuals.panel_fill,
+            EntryContainerFillStyle::Odd => visuals.extreme_bg_color,
         };
 
         egui::Frame::none()
+            .inner_margin(1.0)
             .fill(fill)
             .show(ui, |ui| {
                 ui.set_min_width(ui.max_rect().width());

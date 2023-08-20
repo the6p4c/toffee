@@ -42,14 +42,21 @@ impl App {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let current_input = self.input.clone();
+        let filtered_entries = self
+            .entries
+            .iter()
+            .filter(|e| {
+                e.to_ascii_lowercase()
+                    .contains(&current_input.to_ascii_lowercase())
+            })
+            .collect::<Vec<_>>();
         let data = ToffeeData {
             mode: "drun",
-            counter: Some((5, 10)),
-            entries: &self.entries,
+            counter: Some((filtered_entries.len(), self.entries.len())),
+            entries: filtered_entries,
         };
-        let toffee = Toffee::new(data, &mut self.input, |ui, entry| {
-            ui.label(entry);
-        });
+        let toffee = Toffee::new(data, &mut self.input, |ui, entry| ui.label(entry));
 
         egui::CentralPanel::default()
             .frame(egui::Frame::none())
