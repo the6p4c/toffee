@@ -1,71 +1,20 @@
-use std::fs;
+mod ui;
 
 use eframe::egui;
 use freedesktop_desktop_entry as desktop;
-
-struct QueryEdit<'m, 't> {
-    mode: &'m str,
-    query: &'t mut dyn egui::TextBuffer,
-}
-
-impl<'m, 't> QueryEdit<'m, 't> {
-    fn new(mode: &'m str, query: &'t mut dyn egui::TextBuffer) -> Self {
-        Self { mode, query }
-    }
-}
-
-impl<'m, 't> egui::Widget for QueryEdit<'m, 't> {
-    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
-        ui.horizontal(|ui| {
-            ui.label(self.mode);
-            ui.add_sized(
-                ui.available_size(),
-                egui::TextEdit::singleline(self.query).frame(false),
-            )
-        })
-        .inner
-    }
-}
-
-#[derive(Default)]
-struct QueryResult<'s> {
-    entry: &'s str,
-    is_even: bool,
-}
-
-impl<'s> QueryResult<'s> {
-    fn new(entry: &'s str, is_even: bool) -> Self {
-        Self { entry, is_even }
-    }
-}
-
-impl<'s> egui::Widget for QueryResult<'s> {
-    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
-        let fill = if self.is_even {
-            egui::Color32::RED
-        } else {
-            egui::Color32::GREEN
-        };
-
-        egui::Frame::none()
-            .fill(fill)
-            .show(ui, |ui| {
-                ui.set_min_width(ui.max_rect().width());
-                ui.label(self.entry)
-            })
-            .inner
-    }
-}
+use std::fs;
+use ui::*;
 
 #[derive(Default)]
 struct App {
-    query: String,
+    input: String,
     entries: Vec<String>,
 }
 
 impl App {
     fn new(entries: Vec<String>, cc: &eframe::CreationContext<'_>) -> Self {
         let ctx = &cc.egui_ctx;
+        ctx.memory_mut(|m| m.data.insert_temp(egui::Id::new("meow"), 0usize));
 
         // scale the ui up a bit
         ctx.set_pixels_per_point(1.5);
@@ -85,7 +34,7 @@ impl App {
         ctx.set_fonts(fonts);
 
         Self {
-            query: String::new(),
+            input: String::new(),
             entries,
         }
     }
@@ -93,32 +42,19 @@ impl App {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let current_query = self.query.clone().to_ascii_lowercase();
-        let filtered_entries = self
-            .entries
-            .iter()
-            .filter(|e| e.to_lowercase().contains(&current_query));
+        let data = ToffeeData {
+            mode: "drun",
+            counter: Some((5, 10)),
+            entries: &self.entries,
+        };
+        let toffee = Toffee::new(data, &mut self.input, |ui, entry| {
+            ui.label(entry);
+        });
 
-        egui::TopBottomPanel::top("query")
-            .frame(egui::Frame::none())
-            .show(ctx, |ui| {
-                ui.add(QueryEdit::new("drun", &mut self.query));
-            });
         egui::CentralPanel::default()
             .frame(egui::Frame::none())
             .show(ctx, |ui| {
-                // remove vertical gaps between each result
-                ui.style_mut().spacing.item_spacing.y = 0.0;
-
-                egui::ScrollArea::vertical()
-                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
-                    .show(ui, |ui| {
-                        ui.vertical(|ui| {
-                            for (i, entry) in filtered_entries.enumerate() {
-                                ui.add(QueryResult::new(entry, i % 2 == 0));
-                            }
-                        });
-                    });
+                ui.add(toffee);
             });
     }
 }
