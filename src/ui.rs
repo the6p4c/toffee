@@ -93,11 +93,11 @@ where
     }
 }
 
-impl<'a, Entry, EntryWidget> egui::Widget for &mut Toffee<'a, Entry, EntryWidget>
+impl<'a, Entry, EntryWidget> egui::Widget for Toffee<'a, Entry, EntryWidget>
 where
     EntryWidget: Fn(&mut egui::Ui, &Entry) -> egui::Response,
 {
-    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+    fn ui(mut self, ui: &mut egui::Ui) -> egui::Response {
         let (selected_index, selected_index_changed) = self.update_selected_index(ui);
 
         let query = |ui: &mut egui::Ui| {

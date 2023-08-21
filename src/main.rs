@@ -57,12 +57,12 @@ impl eframe::App for App {
             counter: Some((filtered_entries.len(), self.entries.len())),
             entries: &filtered_entries,
         };
-        let mut toffee = Toffee::new("toffee", data, &mut self.input, |ui, entry| ui.label(entry));
+        let toffee = Toffee::new("toffee", data, &mut self.input, |ui, entry| ui.label(entry));
 
         egui::CentralPanel::default()
             .frame(egui::Frame::none())
             .show(ctx, |ui| {
-                ui.add(&mut toffee);
+                ui.add(toffee);
             });
     }
 }
