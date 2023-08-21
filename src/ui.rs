@@ -1,31 +1,26 @@
 use eframe::egui;
 
-pub struct ToffeeData<'a, Entry: 'a, EntryIter>
-where
-    EntryIter: IntoIterator<Item = &'a Entry>,
-{
+pub struct ToffeeData<'a, Entry> {
     pub mode: &'a str,
     pub counter: Option<(usize, usize)>,
-    pub entries: EntryIter,
+    pub entries: &'a [&'a Entry],
 }
 
-pub struct Toffee<'a, Entry, EntryIter, EntryWidget>
+pub struct Toffee<'a, Entry, EntryWidget>
 where
-    EntryIter: IntoIterator<Item = &'a Entry>,
     EntryWidget: Fn(&mut egui::Ui, &Entry) -> egui::Response,
 {
-    data: ToffeeData<'a, Entry, EntryIter>,
+    data: ToffeeData<'a, Entry>,
     input: &'a mut dyn egui::TextBuffer,
     entry_widget: EntryWidget,
 }
 
-impl<'a, Entry, EntryIter, EntryWidget> Toffee<'a, Entry, EntryIter, EntryWidget>
+impl<'a, Entry, EntryWidget> Toffee<'a, Entry, EntryWidget>
 where
-    EntryIter: IntoIterator<Item = &'a Entry>,
     EntryWidget: Fn(&mut egui::Ui, &Entry) -> egui::Response,
 {
     pub fn new(
-        data: ToffeeData<'a, Entry, EntryIter>,
+        data: ToffeeData<'a, Entry>,
         input: &'a mut dyn egui::TextBuffer,
         entry_widget: EntryWidget,
     ) -> Self {
@@ -37,9 +32,8 @@ where
     }
 }
 
-impl<'a, Entry, EntryIter, EntryWidget> egui::Widget for Toffee<'a, Entry, EntryIter, EntryWidget>
+impl<'a, Entry, EntryWidget> egui::Widget for Toffee<'a, Entry, EntryWidget>
 where
-    EntryIter: IntoIterator<Item = &'a Entry>,
     EntryWidget: Fn(&mut egui::Ui, &Entry) -> egui::Response,
 {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
@@ -107,7 +101,7 @@ where
                     .show(ui, |ui| {
                         ui.set_min_width(ui.max_rect().width());
                         ui.vertical(|ui| {
-                            for (index, entry) in data.entries.into_iter().enumerate() {
+                            for (index, entry) in data.entries.iter().enumerate() {
                                 let fill_style = EntryContainerFillStyle::from_selected_index(
                                     index,
                                     selected_index,

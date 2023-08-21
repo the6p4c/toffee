@@ -54,7 +54,7 @@ impl eframe::App for App {
         let data = ToffeeData {
             mode: "drun",
             counter: Some((filtered_entries.len(), self.entries.len())),
-            entries: filtered_entries,
+            entries: &filtered_entries,
         };
         let toffee = Toffee::new(data, &mut self.input, |ui, entry| ui.label(entry));
 
