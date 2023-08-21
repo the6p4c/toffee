@@ -10,6 +10,7 @@ pub struct Toffee<'a, Entry, EntryWidget>
 where
     EntryWidget: Fn(&mut egui::Ui, &Entry) -> egui::Response,
 {
+    id: egui::Id,
     data: ToffeeData<'a, Entry>,
     input: &'a mut dyn egui::TextBuffer,
     entry_widget: EntryWidget,
@@ -20,11 +21,13 @@ where
     EntryWidget: Fn(&mut egui::Ui, &Entry) -> egui::Response,
 {
     pub fn new(
+        id: impl Into<egui::Id>,
         data: ToffeeData<'a, Entry>,
         input: &'a mut dyn egui::TextBuffer,
         entry_widget: EntryWidget,
     ) -> Self {
         Self {
+            id: id.into(),
             data,
             input,
             entry_widget,
@@ -52,8 +55,9 @@ where
         // - feels like we should keep the cursor on the current entry (not index, but the entry
         //   itself)
         // - search too deep then come back - don't move even though the list shrunk
+        let selected_index_id = self.id.with("selected_index");
         let selected_index: usize = ui
-            .memory(|m| m.data.get_temp(egui::Id::new("selected_index"))) // HACK: id
+            .memory(|m| m.data.get_temp(selected_index_id))
             .unwrap_or_default();
         if let Some(delta) = delta {
             let entries_len = self.data.entries.len();
@@ -71,10 +75,7 @@ where
                 selected_index
             };
 
-            ui.memory_mut(|m| {
-                m.data
-                    .insert_temp(egui::Id::new("selected_index"), selected_index)
-            });
+            ui.memory_mut(|m| m.data.insert_temp(selected_index_id, selected_index));
 
             (selected_index, true)
         } else {
@@ -91,10 +92,10 @@ where
         let (selected_index, selected_index_changed) = self.update_selected_index(ui);
 
         let data = self.data;
-        let resp = egui::TopBottomPanel::top("query")
+        let resp = egui::TopBottomPanel::top(self.id.with("query"))
             .frame(egui::Frame::none())
             .show_inside(ui, |ui| {
-                egui::SidePanel::left("query_mode")
+                egui::SidePanel::left(self.id.with("query_mode"))
                     .min_width(0.0)
                     .resizable(false)
                     .show_inside(ui, |ui| {
@@ -102,7 +103,7 @@ where
                     });
 
                 if let Some(counter) = data.counter {
-                    egui::SidePanel::right("query_counter")
+                    egui::SidePanel::right(self.id.with("query_counter"))
                         .min_width(0.0)
                         .resizable(false)
                         .show_inside(ui, |ui| {

@@ -56,7 +56,7 @@ impl eframe::App for App {
             counter: Some((filtered_entries.len(), self.entries.len())),
             entries: &filtered_entries,
         };
-        let toffee = Toffee::new(data, &mut self.input, |ui, entry| ui.label(entry));
+        let toffee = Toffee::new("toffee", data, &mut self.input, |ui, entry| ui.label(entry));
 
         egui::CentralPanel::default()
             .frame(egui::Frame::none())
