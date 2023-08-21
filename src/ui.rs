@@ -34,6 +34,18 @@ where
         }
     }
 
+    fn selected_index(&self, ui: &egui::Ui) -> usize {
+        ui.memory(|m| m.data.get_temp(self.id.with("selected_index")))
+            .unwrap_or_default()
+    }
+
+    fn set_selected_index(&self, ui: &mut egui::Ui, selected_index: usize) {
+        ui.memory_mut(|m| {
+            m.data
+                .insert_temp(self.id.with("selected_index"), selected_index)
+        });
+    }
+
     fn update_selected_index(&mut self, ui: &mut egui::Ui) -> (usize, bool) {
         #[derive(PartialEq)]
         enum Delta {
@@ -55,10 +67,7 @@ where
         // - feels like we should keep the cursor on the current entry (not index, but the entry
         //   itself)
         // - search too deep then come back - don't move even though the list shrunk
-        let selected_index_id = self.id.with("selected_index");
-        let selected_index: usize = ui
-            .memory(|m| m.data.get_temp(selected_index_id))
-            .unwrap_or_default();
+        let selected_index = self.selected_index(ui);
         if let Some(delta) = delta {
             let entries_len = self.data.entries.len();
             let selected_index = if selected_index >= entries_len {
@@ -75,7 +84,7 @@ where
                 selected_index
             };
 
-            ui.memory_mut(|m| m.data.insert_temp(selected_index_id, selected_index));
+            self.set_selected_index(ui, selected_index);
 
             (selected_index, true)
         } else {
@@ -84,11 +93,11 @@ where
     }
 }
 
-impl<'a, Entry, EntryWidget> egui::Widget for Toffee<'a, Entry, EntryWidget>
+impl<'a, Entry, EntryWidget> egui::Widget for &mut Toffee<'a, Entry, EntryWidget>
 where
     EntryWidget: Fn(&mut egui::Ui, &Entry) -> egui::Response,
 {
-    fn ui(mut self, ui: &mut egui::Ui) -> egui::Response {
+    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
         let (selected_index, selected_index_changed) = self.update_selected_index(ui);
 
         let query = |ui: &mut egui::Ui| {
@@ -113,26 +122,34 @@ where
             ui.add_sized(
                 ui.available_size(),
                 egui::TextEdit::singleline(self.input).frame(false),
-            ).request_focus()
-        };
-
-        let entries = |ui: &mut egui::Ui| {
-            ui.set_min_width(ui.max_rect().width());
-            ui.vertical(|ui| {
-                for (index, entry) in self.data.entries.iter().enumerate() {
-                    EntryContainer::from_selected_index(index, selected_index).show(ui, |ui| {
-                        let widget = (self.entry_widget)(ui, entry);
-                        if selected_index_changed && selected_index == index {
-                            widget.scroll_to_me(None);
-                        }
-                    });
-                }
-            });
+            )
+            .request_focus()
         };
 
         egui::TopBottomPanel::top(self.id.with("query"))
             .frame(egui::Frame::none())
             .show_inside(ui, query);
+
+        let entries = |ui: &mut egui::Ui| {
+            ui.set_min_width(ui.max_rect().width());
+            ui.vertical(|ui| {
+                for (index, entry) in self.data.entries.iter().enumerate() {
+                    let container = EntryContainer::from_selected_index(index, selected_index)
+                        .show(ui, |ui| {
+                            (self.entry_widget)(ui, entry);
+                        });
+
+                    if selected_index_changed && selected_index == index {
+                        container.response.scroll_to_me(None);
+                    }
+
+                    if container.response.clicked() {
+                        self.set_selected_index(ui, index);
+                    }
+                }
+            });
+        };
+
         egui::CentralPanel::default()
             //.frame(egui::Frame::none()) // TODO: we want this, but it causes an overlap
             .show_inside(ui, |ui| {
@@ -180,20 +197,28 @@ impl EntryContainer {
         Self::new(fill_style)
     }
 
-    fn show<R>(self, ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    fn show<R>(
+        self,
+        ui: &mut egui::Ui,
+        add_contents: impl FnOnce(&mut egui::Ui) -> R,
+    ) -> egui::InnerResponse<R> {
         let fill = match self.fill_style {
             EntryContainerFillStyle::Selected => egui::Color32::from_rgb(0x10, 0x42, 0x59),
             EntryContainerFillStyle::Even => egui::Color32::from_gray(27),
             EntryContainerFillStyle::Odd => egui::Color32::from_gray(35),
         };
 
-        egui::Frame::none()
+        let frame = egui::Frame::none()
             .inner_margin(1.0)
             .fill(fill)
             .show(ui, |ui| {
                 ui.set_min_width(ui.max_rect().width());
                 add_contents(ui)
-            })
-            .inner
+            });
+
+        egui::InnerResponse {
+            inner: frame.inner,
+            response: frame.response.interact(egui::Sense::click()),
+        }
     }
 }

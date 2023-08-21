@@ -51,17 +51,18 @@ impl eframe::App for App {
                     .contains(&current_input.to_ascii_lowercase())
             })
             .collect::<Vec<_>>();
+
         let data = ToffeeData {
             mode: "drun",
             counter: Some((filtered_entries.len(), self.entries.len())),
             entries: &filtered_entries,
         };
-        let toffee = Toffee::new("toffee", data, &mut self.input, |ui, entry| ui.label(entry));
+        let mut toffee = Toffee::new("toffee", data, &mut self.input, |ui, entry| ui.label(entry));
 
         egui::CentralPanel::default()
             .frame(egui::Frame::none())
             .show(ctx, |ui| {
-                ui.add(toffee);
+                ui.add(&mut toffee);
             });
     }
 }
