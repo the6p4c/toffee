@@ -91,36 +91,48 @@ where
     fn ui(mut self, ui: &mut egui::Ui) -> egui::Response {
         let (selected_index, selected_index_changed) = self.update_selected_index(ui);
 
-        let data = self.data;
-        let resp = egui::TopBottomPanel::top(self.id.with("query"))
-            .frame(egui::Frame::none())
-            .show_inside(ui, |ui| {
-                egui::SidePanel::left(self.id.with("query_mode"))
+        let query = |ui: &mut egui::Ui| {
+            egui::SidePanel::left(self.id.with("query_mode"))
+                .min_width(0.0)
+                .resizable(false)
+                .show_inside(ui, |ui| {
+                    ui.add(egui::Label::new(self.data.mode).wrap(false));
+                });
+
+            if let Some(counter) = self.data.counter {
+                egui::SidePanel::right(self.id.with("query_counter"))
                     .min_width(0.0)
                     .resizable(false)
                     .show_inside(ui, |ui| {
-                        ui.add(egui::Label::new(data.mode).wrap(false));
+                        ui.add(
+                            egui::Label::new(format!("{}/{}", counter.0, counter.1)).wrap(false),
+                        );
                     });
+            }
 
-                if let Some(counter) = data.counter {
-                    egui::SidePanel::right(self.id.with("query_counter"))
-                        .min_width(0.0)
-                        .resizable(false)
-                        .show_inside(ui, |ui| {
-                            ui.add(
-                                egui::Label::new(format!("{}/{}", counter.0, counter.1))
-                                    .wrap(false),
-                            );
-                        });
+            ui.add_sized(
+                ui.available_size(),
+                egui::TextEdit::singleline(self.input).frame(false),
+            )
+        };
+
+        let entries = |ui: &mut egui::Ui| {
+            ui.set_min_width(ui.max_rect().width());
+            ui.vertical(|ui| {
+                for (index, entry) in self.data.entries.iter().enumerate() {
+                    EntryContainer::from_selected_index(index, selected_index).show(ui, |ui| {
+                        let widget = (self.entry_widget)(ui, entry);
+                        if selected_index_changed && selected_index == index {
+                            widget.scroll_to_me(None);
+                        }
+                    });
                 }
+            });
+        };
 
-                ui.add_sized(
-                    ui.available_size(),
-                    egui::TextEdit::singleline(self.input).frame(false),
-                )
-            })
-            .inner;
-
+        egui::TopBottomPanel::top(self.id.with("query"))
+            .frame(egui::Frame::none())
+            .show_inside(ui, query);
         egui::CentralPanel::default()
             //.frame(egui::Frame::none()) // TODO: we want this, but it causes an overlap
             .show_inside(ui, |ui| {
@@ -129,25 +141,10 @@ where
 
                 egui::ScrollArea::vertical()
                     .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
-                    .show(ui, |ui| {
-                        ui.set_min_width(ui.max_rect().width());
-                        ui.vertical(|ui| {
-                            for (index, entry) in data.entries.iter().enumerate() {
-                                let fill_style = EntryContainerFillStyle::from_selected_index(
-                                    index,
-                                    selected_index,
-                                );
-                                EntryContainer::new(fill_style).show(ui, |ui| {
-                                    let widget = (self.entry_widget)(ui, entry);
-                                    if selected_index_changed && selected_index == index {
-                                        widget.scroll_to_me(None);
-                                    }
-                                });
-                            }
-                        });
-                    });
+                    .show(ui, entries);
             });
-        resp
+
+        ui.label("") // HACK: for a random response
     }
 }
 
@@ -176,6 +173,11 @@ struct EntryContainer {
 impl EntryContainer {
     fn new(fill_style: EntryContainerFillStyle) -> Self {
         Self { fill_style }
+    }
+
+    fn from_selected_index(index: usize, selected_index: usize) -> Self {
+        let fill_style = EntryContainerFillStyle::from_selected_index(index, selected_index);
+        Self::new(fill_style)
     }
 
     fn show<R>(self, ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui) -> R) -> R {
