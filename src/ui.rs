@@ -154,11 +154,10 @@ impl EntryContainer {
     }
 
     fn show<R>(self, ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui) -> R) -> R {
-        let visuals = &ui.style().visuals;
         let fill = match self.fill_style {
-            EntryContainerFillStyle::Selected => egui::Color32::BLUE,
-            EntryContainerFillStyle::Even => visuals.panel_fill,
-            EntryContainerFillStyle::Odd => visuals.extreme_bg_color,
+            EntryContainerFillStyle::Selected => egui::Color32::from_rgb(0x10, 0x42, 0x59),
+            EntryContainerFillStyle::Even => egui::Color32::from_gray(27),
+            EntryContainerFillStyle::Odd => egui::Color32::from_gray(35),
         };
 
         egui::Frame::none()
