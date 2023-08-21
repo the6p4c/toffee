@@ -53,49 +53,52 @@ impl<'data, 'input, Entry> Toffee<'data, 'input, Entry> {
     }
 
     fn update_selected_index(&mut self, ui: &mut egui::Ui) -> (usize, bool) {
+        let initial_selected_index = self.selected_index(ui);
+        let selected_index = initial_selected_index;
+
+        let entries_len = self.data.entries.len();
+
+        // jump to the top of the list if the selected index is out of bounds (e.g. after an entries
+        // update that makes the list shorter)
+        let selected_index = if selected_index < entries_len {
+            selected_index
+        } else {
+            0
+        };
+
+        // handle arrow key up/down, without going out of bounds
         #[derive(PartialEq)]
-        enum Delta {
+        enum Motion {
             Up,
             Down,
         }
 
-        let delta = ui.input_mut(|i| {
+        let motion = ui.input_mut(|i| {
             if i.consume_key(egui::Modifiers::default(), egui::Key::ArrowUp) {
-                Some(Delta::Up)
+                Some(Motion::Up)
             } else if i.consume_key(egui::Modifiers::default(), egui::Key::ArrowDown) {
-                Some(Delta::Down)
+                Some(Motion::Down)
             } else {
                 None
             }
         });
+        let selected_index = match motion {
+            // move up one entry
+            Some(Motion::Up) if selected_index != 0 => selected_index - 1,
+            // move down one entry (add one to the index rather than subtracting one from the length
+            // to avoid an underflow when there are no entries)
+            Some(Motion::Down) if selected_index + 1 != entries_len => selected_index + 1,
+            // don't move - no motion, or it would put us out of bounds
+            _ => selected_index,
+        };
 
-        // TODO: behaviour when searching (i.e. entries length changing)
-        // - feels like we should keep the cursor on the current entry (not index, but the entry
-        //   itself)
-        // - search too deep then come back - don't move even though the list shrunk
-        let selected_index = self.selected_index(ui);
-        if let Some(delta) = delta {
-            let entries_len = self.data.entries.len();
-            let selected_index = if selected_index >= entries_len {
-                // we're already out of bounds
-                0
-            } else if delta == Delta::Up && selected_index != 0 {
-                // move up one entry
-                selected_index - 1
-            } else if delta == Delta::Down && selected_index != entries_len - 1 {
-                // move down one entry
-                selected_index + 1
-            } else {
-                // don't move - it would put us out of bounds
-                selected_index
-            };
-
+        // update state and pass selected index back to caller
+        let selected_index_changed = selected_index != initial_selected_index;
+        if selected_index_changed {
             self.set_selected_index(ui, selected_index);
-
-            (selected_index, true)
-        } else {
-            (selected_index, false)
         }
+
+        (selected_index, selected_index_changed)
     }
 
     pub fn show(
@@ -174,7 +177,8 @@ impl<'data, 'input, Entry> Toffee<'data, 'input, Entry> {
             .inner;
 
         let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter));
-        let selected_entry = if enter_pressed || entry_double_clicked {
+        let selected_index_valid = selected_index < self.data.entries.len();
+        let selected_entry = if (enter_pressed || entry_double_clicked) && selected_index_valid {
             Some(self.data.entries[selected_index])
         } else {
             None
