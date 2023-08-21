@@ -30,37 +30,67 @@ where
             entry_widget,
         }
     }
+
+    fn update_selected_index(&mut self, ui: &mut egui::Ui) -> (usize, bool) {
+        #[derive(PartialEq)]
+        enum Delta {
+            Up,
+            Down,
+        }
+
+        let delta = ui.input(|i| {
+            if i.key_pressed(egui::Key::ArrowUp) {
+                Some(Delta::Up)
+            } else if i.key_pressed(egui::Key::ArrowDown) {
+                Some(Delta::Down)
+            } else {
+                None
+            }
+        });
+
+        // TODO: behaviour when searching (i.e. entries length changing)
+        // - feels like we should keep the cursor on the current entry (not index, but the entry
+        //   itself)
+        // - search too deep then come back - don't move even though the list shrunk
+        let selected_index: usize = ui
+            .memory(|m| m.data.get_temp(egui::Id::new("selected_index"))) // HACK: id
+            .unwrap_or_default();
+        if let Some(delta) = delta {
+            let entries_len = self.data.entries.len();
+            let selected_index = if selected_index >= entries_len {
+                // we're already out of bounds
+                0
+            } else if delta == Delta::Up && selected_index != 0 {
+                // move up one entry
+                selected_index - 1
+            } else if delta == Delta::Down && selected_index != entries_len - 1 {
+                // move down one entry
+                selected_index + 1
+            } else {
+                // don't move - it would put us out of bounds
+                selected_index
+            };
+
+            ui.memory_mut(|m| {
+                m.data
+                    .insert_temp(egui::Id::new("selected_index"), selected_index)
+            });
+
+            (selected_index, true)
+        } else {
+            (selected_index, false)
+        }
+    }
 }
 
 impl<'a, Entry, EntryWidget> egui::Widget for Toffee<'a, Entry, EntryWidget>
 where
     EntryWidget: Fn(&mut egui::Ui, &Entry) -> egui::Response,
 {
-    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+    fn ui(mut self, ui: &mut egui::Ui) -> egui::Response {
+        let (selected_index, selected_index_changed) = self.update_selected_index(ui);
+
         let data = self.data;
-
-        let selected_index_delta = ui.input(|i| {
-            if i.key_pressed(egui::Key::ArrowUp) {
-                -1
-            } else if i.key_pressed(egui::Key::ArrowDown) {
-                1
-            } else {
-                0
-            }
-        });
-
-        let selected_index: usize = ui
-            .memory(|m| m.data.get_temp(egui::Id::new("selected_index")))
-            .unwrap_or_default();
-        let selected_index_changed = selected_index_delta != 0;
-        if selected_index_changed {
-            let selected_index = selected_index.wrapping_add_signed(selected_index_delta);
-            ui.memory_mut(|m| {
-                m.data
-                    .insert_temp(egui::Id::new("selected_index"), selected_index)
-            });
-        }
-
         let resp = egui::TopBottomPanel::top("query")
             .frame(egui::Frame::none())
             .show_inside(ui, |ui| {
