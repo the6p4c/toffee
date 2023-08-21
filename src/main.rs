@@ -57,13 +57,22 @@ impl eframe::App for App {
             counter: Some((filtered_entries.len(), self.entries.len())),
             entries: &filtered_entries,
         };
-        let toffee = Toffee::new("toffee", data, &mut self.input, |ui, entry| ui.label(entry));
 
-        egui::CentralPanel::default()
+        let toffee = egui::CentralPanel::default()
             .frame(egui::Frame::none())
             .show(ctx, |ui| {
-                ui.add(toffee);
-            });
+                Toffee::new("toffee", data, &mut self.input).show(ui, |ui, entry| {
+                    ui.label(entry);
+                })
+            })
+            .inner;
+
+        if toffee.changed() {
+            eprintln!("changed: {}", self.input);
+        }
+        if let Some(selected_entry) = toffee.selected_entry() {
+            eprintln!("selected: {}", selected_entry);
+        }
     }
 }
 

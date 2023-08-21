@@ -1,36 +1,42 @@
 use eframe::egui;
 
-pub struct ToffeeData<'a, Entry> {
-    pub mode: &'a str,
+pub struct ToffeeData<'data, Entry> {
+    pub mode: &'data str,
     pub counter: Option<(usize, usize)>,
-    pub entries: &'a [&'a Entry],
+    pub entries: &'data [&'data Entry],
 }
 
-pub struct Toffee<'a, Entry, EntryWidget>
-where
-    EntryWidget: Fn(&mut egui::Ui, &Entry) -> egui::Response,
-{
+pub struct ToffeeOutput<'data, Entry> {
+    changed: bool,
+    selected_entry: Option<&'data Entry>,
+}
+
+impl<'data, Entry> ToffeeOutput<'data, Entry> {
+    pub fn changed(&self) -> bool {
+        self.changed
+    }
+
+    pub fn selected_entry(&self) -> Option<&Entry> {
+        self.selected_entry
+    }
+}
+
+pub struct Toffee<'data, 'input, Entry> {
     id: egui::Id,
-    data: ToffeeData<'a, Entry>,
-    input: &'a mut dyn egui::TextBuffer,
-    entry_widget: EntryWidget,
+    data: ToffeeData<'data, Entry>,
+    input: &'input mut dyn egui::TextBuffer,
 }
 
-impl<'a, Entry, EntryWidget> Toffee<'a, Entry, EntryWidget>
-where
-    EntryWidget: Fn(&mut egui::Ui, &Entry) -> egui::Response,
-{
+impl<'data, 'input, Entry> Toffee<'data, 'input, Entry> {
     pub fn new(
         id: impl Into<egui::Id>,
-        data: ToffeeData<'a, Entry>,
-        input: &'a mut dyn egui::TextBuffer,
-        entry_widget: EntryWidget,
+        data: ToffeeData<'data, Entry>,
+        input: &'input mut dyn egui::TextBuffer,
     ) -> Self {
         Self {
             id: id.into(),
             data,
             input,
-            entry_widget,
         }
     }
 
@@ -91,13 +97,12 @@ where
             (selected_index, false)
         }
     }
-}
 
-impl<'a, Entry, EntryWidget> egui::Widget for Toffee<'a, Entry, EntryWidget>
-where
-    EntryWidget: Fn(&mut egui::Ui, &Entry) -> egui::Response,
-{
-    fn ui(mut self, ui: &mut egui::Ui) -> egui::Response {
+    pub fn show(
+        mut self,
+        ui: &mut egui::Ui,
+        entry_contents: impl Fn(&mut egui::Ui, &Entry),
+    ) -> ToffeeOutput<'data, Entry> {
         let (selected_index, selected_index_changed) = self.update_selected_index(ui);
 
         let query = |ui: &mut egui::Ui| {
@@ -119,38 +124,43 @@ where
                     });
             }
 
-            ui.add_sized(
+            let query = ui.add_sized(
                 ui.available_size(),
                 egui::TextEdit::singleline(self.input).frame(false),
-            )
-            .request_focus()
+            );
+            query.request_focus();
+            query
         };
 
-        egui::TopBottomPanel::top(self.id.with("query"))
+        let query = egui::TopBottomPanel::top(self.id.with("query"))
             .frame(egui::Frame::none())
-            .show_inside(ui, query);
+            .show_inside(ui, query)
+            .inner;
 
         let entries = |ui: &mut egui::Ui| {
             ui.set_min_width(ui.max_rect().width());
             ui.vertical(|ui| {
+                let mut double_clicked = false;
                 for (index, entry) in self.data.entries.iter().enumerate() {
                     let container = EntryContainer::from_selected_index(index, selected_index)
                         .show(ui, |ui| {
-                            (self.entry_widget)(ui, entry);
+                            entry_contents(ui, entry);
                         });
 
                     if selected_index_changed && selected_index == index {
                         container.response.scroll_to_me(None);
                     }
-
                     if container.response.clicked() {
                         self.set_selected_index(ui, index);
                     }
+                    double_clicked |= container.response.double_clicked();
                 }
-            });
+                double_clicked
+            })
+            .inner
         };
 
-        egui::CentralPanel::default()
+        let entry_double_clicked = egui::CentralPanel::default()
             //.frame(egui::Frame::none()) // TODO: we want this, but it causes an overlap
             .show_inside(ui, |ui| {
                 // remove vertical gaps between each result
@@ -158,10 +168,22 @@ where
 
                 egui::ScrollArea::vertical()
                     .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
-                    .show(ui, entries);
-            });
+                    .show(ui, entries)
+                    .inner
+            })
+            .inner;
 
-        ui.label("") // HACK: for a random response
+        let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter));
+        let selected_entry = if enter_pressed || entry_double_clicked {
+            Some(self.data.entries[selected_index])
+        } else {
+            None
+        };
+
+        ToffeeOutput {
+            changed: query.changed(),
+            selected_entry,
+        }
     }
 }
 
