@@ -8,6 +8,7 @@ use crate::toffee::{Toffee, ToffeeData};
 
 struct Entry {
     name: String,
+    keywords: Vec<String>,
     exec: String,
 }
 
@@ -27,9 +28,18 @@ impl DRun {
             let contents = fs::read_to_string(&path).unwrap();
             let entry = desktop::DesktopEntry::decode(&path, &contents).unwrap();
 
-            let name = entry.groups["Desktop Entry"]["Name"].0.to_owned();
-            let exec = entry.groups["Desktop Entry"]["Exec"].0.to_owned();
-            entries.push(Entry { name, exec });
+            let desktop_entry = &entry.groups["Desktop Entry"];
+            let name = desktop_entry["Name"].0.to_owned();
+            let keywords = desktop_entry
+                .get("Keywords")
+                .map(|k| k.0.split(";").map(|s| (*s).to_owned()).collect())
+                .unwrap_or_else(|| vec![]);
+            let exec = desktop_entry["Exec"].0.to_owned();
+            entries.push(Entry {
+                name,
+                keywords,
+                exec,
+            });
         }
 
         Self { entries }
@@ -41,7 +51,17 @@ impl Mode for DRun {
         let filtered_entries: Vec<_> = self
             .entries
             .iter()
-            .filter(|entry| entry.name.to_lowercase().contains(&input.to_lowercase()))
+            .filter(|entry| {
+                let input = &input.to_lowercase();
+
+                let name_match = entry.name.to_lowercase().contains(input);
+                let keyword_match = entry
+                    .keywords
+                    .iter()
+                    .any(|k| k.to_lowercase().contains(input));
+
+                name_match || keyword_match
+            })
             .collect();
         let data = ToffeeData {
             mode: "drun",
