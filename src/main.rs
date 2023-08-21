@@ -1,18 +1,17 @@
-mod ui;
-
 use eframe::egui;
-use freedesktop_desktop_entry as desktop;
-use std::fs;
-use ui::*;
 
-#[derive(Default)]
-struct App {
+mod modes;
+mod toffee;
+
+use modes::{DRun, Mode};
+
+struct App<M: Mode> {
+    mode: M,
     input: String,
-    entries: Vec<String>,
 }
 
-impl App {
-    fn new(entries: Vec<String>, cc: &eframe::CreationContext<'_>) -> Self {
+impl<M: Mode> App<M> {
+    fn new(cc: &eframe::CreationContext<'_>, mode: M) -> Self {
         let ctx = &cc.egui_ctx;
 
         // scale the ui up a bit
@@ -33,61 +32,22 @@ impl App {
         ctx.set_fonts(fonts);
 
         Self {
+            mode,
             input: String::new(),
-            entries,
         }
     }
 }
 
-impl eframe::App for App {
+impl<M: Mode> eframe::App for App<M> {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let current_input = self.input.clone();
-        let filtered_entries = self
-            .entries
-            .iter()
-            .filter(|e| {
-                e.to_ascii_lowercase()
-                    .contains(&current_input.to_ascii_lowercase())
-            })
-            .collect::<Vec<_>>();
-
-        let data = ToffeeData {
-            mode: "drun",
-            counter: Some((filtered_entries.len(), self.entries.len())),
-            entries: &filtered_entries,
-        };
-
-        let toffee = egui::CentralPanel::default()
+        egui::CentralPanel::default()
             .frame(egui::Frame::none())
-            .show(ctx, |ui| {
-                Toffee::new("toffee", data, &mut self.input).show(ui, |ui, entry| {
-                    ui.label(entry);
-                })
-            })
-            .inner;
-
-        if toffee.changed() {
-            eprintln!("changed: {}", self.input);
-        }
-        if let Some(selected_entry) = toffee.selected_entry() {
-            eprintln!("selected: {}", selected_entry);
-        }
+            .show(ctx, |ui| self.mode.update(ui, &mut self.input));
     }
 }
 
 fn main() {
-    let mut entries = vec![];
-
-    let desktop_files = fs::read_dir("applications/").unwrap();
-    for entry in desktop_files {
-        let entry = entry.unwrap();
-        let path = entry.path();
-
-        let contents = fs::read_to_string(&path).unwrap();
-        let entry = desktop::DesktopEntry::decode(&path, &contents).unwrap();
-
-        entries.push(entry.groups["Desktop Entry"]["Name"].0.to_owned());
-    }
+    let mode = DRun::new();
 
     let native_options = eframe::NativeOptions {
         initial_window_size: Some(egui::emath::Vec2::new(500.0, 200.0)),
@@ -96,7 +56,7 @@ fn main() {
     eframe::run_native(
         "toffee",
         native_options,
-        Box::new(|cc| Box::new(App::new(entries, cc))),
+        Box::new(|cc| Box::new(App::new(cc, mode))),
     )
     .expect("app run failed");
 }

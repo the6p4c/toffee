@@ -1,33 +1,33 @@
 use eframe::egui;
 
-pub struct ToffeeData<'data, Entry> {
-    pub mode: &'data str,
-    pub counter: Option<(usize, usize)>,
-    pub entries: &'data [&'data Entry],
+pub struct ToffeeOutput<Entry: Copy> {
+    pub input_changed: bool,
+    pub selected_entry: Option<Entry>,
 }
 
-pub struct ToffeeOutput<'data, Entry> {
-    changed: bool,
-    selected_entry: Option<&'data Entry>,
-}
-
-impl<'data, Entry> ToffeeOutput<'data, Entry> {
-    pub fn changed(&self) -> bool {
-        self.changed
+impl<Entry: Copy> ToffeeOutput<Entry> {
+    pub fn input_changed(&self) -> bool {
+        self.input_changed
     }
 
-    pub fn selected_entry(&self) -> Option<&Entry> {
+    pub fn selected_entry(&self) -> Option<Entry> {
         self.selected_entry
     }
 }
 
-pub struct Toffee<'data, 'input, Entry> {
+pub struct ToffeeData<'data, Entry: Copy> {
+    pub mode: &'data str,
+    pub counter: Option<(usize, usize)>,
+    pub entries: Vec<Entry>,
+}
+
+pub struct Toffee<'data, 'input, Entry: Copy> {
     id: egui::Id,
     data: ToffeeData<'data, Entry>,
     input: &'input mut dyn egui::TextBuffer,
 }
 
-impl<'data, 'input, Entry> Toffee<'data, 'input, Entry> {
+impl<'data, 'input, Entry: Copy> Toffee<'data, 'input, Entry> {
     pub fn new(
         id: impl Into<egui::Id>,
         data: ToffeeData<'data, Entry>,
@@ -104,8 +104,8 @@ impl<'data, 'input, Entry> Toffee<'data, 'input, Entry> {
     pub fn show(
         mut self,
         ui: &mut egui::Ui,
-        entry_contents: impl Fn(&mut egui::Ui, &Entry),
-    ) -> ToffeeOutput<'data, Entry> {
+        entry_contents: impl Fn(&mut egui::Ui, Entry),
+    ) -> ToffeeOutput<Entry> {
         let (selected_index, selected_index_changed) = self.update_selected_index(ui);
 
         let query = |ui: &mut egui::Ui| {
@@ -147,7 +147,7 @@ impl<'data, 'input, Entry> Toffee<'data, 'input, Entry> {
                 for (index, entry) in self.data.entries.iter().enumerate() {
                     let container = EntryContainer::from_selected_index(index, selected_index)
                         .show(ui, |ui| {
-                            entry_contents(ui, entry);
+                            entry_contents(ui, *entry);
                         });
 
                     if selected_index_changed && selected_index == index {
@@ -185,7 +185,7 @@ impl<'data, 'input, Entry> Toffee<'data, 'input, Entry> {
         };
 
         ToffeeOutput {
-            changed: query.changed(),
+            input_changed: query.changed(),
             selected_entry,
         }
     }
