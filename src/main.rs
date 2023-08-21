@@ -14,7 +14,6 @@ struct App {
 impl App {
     fn new(entries: Vec<String>, cc: &eframe::CreationContext<'_>) -> Self {
         let ctx = &cc.egui_ctx;
-        ctx.memory_mut(|m| m.data.insert_temp(egui::Id::new("meow"), 0usize));
 
         // scale the ui up a bit
         ctx.set_pixels_per_point(1.5);
