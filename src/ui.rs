@@ -41,10 +41,10 @@ where
             Down,
         }
 
-        let delta = ui.input(|i| {
-            if i.key_pressed(egui::Key::ArrowUp) {
+        let delta = ui.input_mut(|i| {
+            if i.consume_key(egui::Modifiers::default(), egui::Key::ArrowUp) {
                 Some(Delta::Up)
-            } else if i.key_pressed(egui::Key::ArrowDown) {
+            } else if i.consume_key(egui::Modifiers::default(), egui::Key::ArrowDown) {
                 Some(Delta::Down)
             } else {
                 None
@@ -113,7 +113,7 @@ where
             ui.add_sized(
                 ui.available_size(),
                 egui::TextEdit::singleline(self.input).frame(false),
-            )
+            ).request_focus()
         };
 
         let entries = |ui: &mut egui::Ui| {
