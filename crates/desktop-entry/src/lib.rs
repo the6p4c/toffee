@@ -74,7 +74,7 @@ mod tests {
     }
 
     #[test]
-    fn line_comment() {
+    fn desktop_entry_line_comment() {
         // Any line must end with a linefeed
         assert!(desktop_entry::line_comment("").is_err());
         // A comment can be empty
@@ -87,7 +87,7 @@ mod tests {
     }
 
     #[test]
-    fn line_group_header() {
+    fn desktop_entry_line_group_header() {
         // Any line must end with a linefeed
         assert!(desktop_entry::line_group_header("").is_err());
         // Group names can be simple strings
@@ -103,7 +103,7 @@ mod tests {
     }
 
     #[test]
-    fn line_entry() {
+    fn desktop_entry_line_entry() {
         // Any line must end with a linefeed
         assert!(desktop_entry::line_entry("").is_err());
         // Keys must be simple strings, values can be simple strings
