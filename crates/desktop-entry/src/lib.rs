@@ -29,12 +29,12 @@ peg::parser! {
         rule value() -> &'input str
             = v:$([^'\n']*) { v };
         pub(super) rule line_entry() -> (&'input str, &'input str)
-            = k:key() whitespace()* "=" whitespace()* v:value() "\n" { (k, v) };
+            = k:key() "=" v:value() "\n" { (k, v) };
 
         pub rule line() -> Line<'input>
             = line_blank() { Line::Blank }
             / c:line_comment() { Line::Comment(c) }
-            / gh:line_group_header() { Line::GroupHeader(gh)}
+            / gn:line_group_header() { Line::GroupHeader(gn)}
             / kv:line_entry() { let (k, v) = kv; Line::Entry(k, v) };
     }
 }
@@ -74,5 +74,18 @@ mod tests {
         assert_eq!(parser::line_group_header("[groupname]\n"), Ok("groupname"));
         // Group names can also be less simple strings
         assert_eq!(parser::line_group_header("[group🥺\t name]\n"), Ok("group🥺\t name"))
+    }
+
+    #[test]
+    fn line_entry() {
+        // Any line must end with a linefeed
+        assert!(parser::line_entry("").is_err());
+        // Keys must be simple strings, values can be simple strings
+        assert_eq!(parser::line_entry("key=value\n"), Ok(("key", "value")));
+        // Values can be less simple strings
+        assert_eq!(parser::line_entry("key=val🥺🥺\tue\n"), Ok(("key", "val🥺🥺\tue")));
+        // Whitespace before and after the = separator is part of the key and value
+        // TODO: how is this actually implemented?
+        // assert_eq!(parser::line_entry("key  = value"), Ok(("key  ", " value")));
     }
 }
