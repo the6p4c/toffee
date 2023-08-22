@@ -4,21 +4,54 @@
 //! <https://specifications.freedesktop.org/desktop-entry-spec/desktop-entry-spec-latest.html>.
 
 use std::collections::HashMap;
+use std::error;
+use std::fmt;
 use std::str::FromStr;
 
 mod parser;
 
 use parser::Line;
 
+#[derive(Debug)]
+enum Error {
+    Parse(ParseError),
+    KeyWithoutGroup,
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::Parse(ParseError { inner }) => write!(f, "{}", inner),
+            Error::KeyWithoutGroup => write!(f, "key without group"),
+        }
+    }
+}
+
+impl error::Error for Error {}
+
+type PegParseError = peg::error::ParseError<peg::str::LineCol>;
+
+#[derive(Debug)]
+struct ParseError {
+    inner: PegParseError,
+}
+
+impl From<PegParseError> for Error {
+    fn from(inner: PegParseError) -> Self {
+        Error::Parse(ParseError { inner })
+    }
+}
+
+#[derive(Debug)]
 struct DesktopEntry {
     entries: HashMap<String, HashMap<String, String>>,
 }
 
 impl FromStr for DesktopEntry {
-    type Err = (); // TODO: not this
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let lines = parser::file(s).expect("puppy to write better code"); // TODO: not this
+        let lines = parser::file(s)?;
 
         let mut entries = HashMap::new();
         let mut group = None;
@@ -37,7 +70,7 @@ impl FromStr for DesktopEntry {
                             .expect("")
                             .insert(k.to_owned(), v.to_owned());
                     } else {
-                        panic!("aaa"); // TODO: not this
+                        return Err(Error::KeyWithoutGroup);
                     }
                 }
             }
@@ -156,5 +189,21 @@ mod tests {
                 ),
             ])
         );
+    }
+
+    #[test]
+    fn error_parse() {
+        let entry = from_str!(indoc! {"
+            [group1
+        "});
+        assert!(matches!(entry, Err(Error::Parse(_))));
+    }
+
+    #[test]
+    fn error_key_without_group() {
+        let entry = from_str!(indoc! {"
+            k=v
+        "});
+        assert!(matches!(entry, Err(Error::KeyWithoutGroup)));
     }
 }
