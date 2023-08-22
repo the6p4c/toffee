@@ -3,6 +3,9 @@ name = "toffee"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+members = ["crates/desktop-entry"]
+
 [dependencies]
 eframe = "0.22.0"
 freedesktop-desktop-entry = "0.5.0"
