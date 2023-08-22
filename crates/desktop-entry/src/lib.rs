@@ -10,21 +10,27 @@ pub enum Line<'input> {
 
 peg::parser! {
     grammar desktop_entry() for str {
+        // TODO: unify and move this
+        // All characters, except for control characters
+        rule utf8_string() -> &'input str
+            = s:$([^'\x00'..='\x1f']*) { s }
+
         pub(super) rule line_blank()
             = "\n";
 
         pub(super) rule line_comment() -> &'input str
             = "#" c:$([^'\n']*) "\n" { c };
 
+        // All ASCII characters, except for '[', ']', and control characters
         rule group_name() -> &'input str
-            = gn:$([^'\x00'..='\x1f' | '[' | ']' | '\x7f']+) { gn };
+            = gn:$(['\x20'..='\x5a' | '\x5c' | '\x5e'..='\x7e']+) { gn };
         pub(super) rule line_group_header() -> &'input str
             = "[" gn:group_name() "]\n" { gn };
 
         rule key() -> &'input str
             = k:$(['A'..='Z' | 'a'..='z' | '0'..='9' | '-']+) { k };
         rule value() -> &'input str
-            = v:$([^'\n']*) { v };
+            = utf8_string();
         pub(super) rule line_entry() -> (&'input str, &'input str)
             = k:key() "=" v:value() "\n" { (k, v) };
 
@@ -38,10 +44,12 @@ peg::parser! {
 
 peg::parser! {
     grammar value_type() for str {
+        // All ASCII characters, except for control characters
         rule ascii_string() -> &'input str
-            = s:$([_]*) { s } // TODO: implement this (nicely) - no control characters
+            = s:$(['\x20'..='\x7e']*) { s }
+        // All characters, except for control characters
         rule utf8_string() -> &'input str
-            = s:$([_]*) { s }
+            = s:$([^'\x00'..='\x1f']*) { s }
 
         pub rule string() -> &'input str
             = ascii_string()
@@ -62,21 +70,21 @@ peg::parser! {
     }
 }
 
-macro_rules! assert_parses {
-    ($parsed:expr, $expected:expr) => {
-        assert_eq!($parsed, Ok($expected));
-    };
-}
-
-macro_rules! assert_errors {
-    ($parsed:expr) => {
-        assert!($parsed.is_err())
-    };
-}
-
 #[cfg(test)]
 mod tests {
     use super::{desktop_entry, value_type};
+
+    macro_rules! assert_parses {
+        ($parsed:expr, $expected:expr) => {
+            assert_eq!($parsed, Ok($expected));
+        };
+    }
+
+    macro_rules! assert_errors {
+        ($parsed:expr) => {
+            assert!($parsed.is_err())
+        };
+    }
 
     #[test]
     fn desktop_entry_line_blank() {
@@ -115,8 +123,7 @@ mod tests {
         // ... but they cannot contain control characters
         assert_errors!(desktop_entry::line_group_header("[group\x07name]\n"));
         // Group names cannot contain non-ASCII characters
-        // TODO: implement this (nicely)
-        // assert_errors!(desktop_entry::line_group_header("[group🥺name]\n"));
+        assert_errors!(desktop_entry::line_group_header("[group🥺name]\n"));
         // Any line must end with a linefeed
         assert_errors!(desktop_entry::line_group_header("[groupname]"));
     }
@@ -128,12 +135,14 @@ mod tests {
             desktop_entry::line_entry("key=value\n"),
             Ok(("key", "value"))
         );
-        // ... but values can be non-ASCII and contain control characters
+        // ... but values can be non-ASCII
         assert_eq!(
-            desktop_entry::line_entry("key=val🥺🥺\x07ue\n"),
-            Ok(("key", "val🥺🥺\x07ue"))
+            desktop_entry::line_entry("key=val🥺🥺ue\n"),
+            Ok(("key", "val🥺🥺ue"))
         );
-        // ... keys must still be A-Za-z0-9- strings, though
+        // ... but values still cannot contain control characters
+        assert_errors!(desktop_entry::line_entry("key=val🥺\x07🥺ue\n"));
+        // ... and keys must still be A-Za-z0-9- strings
         assert_errors!(desktop_entry::line_entry("key!=value\n"));
         assert_errors!(desktop_entry::line_entry("k_ey=value\n"));
         assert_errors!(desktop_entry::line_entry("ke🥺y=value\n"));
@@ -150,30 +159,33 @@ mod tests {
     #[test]
     fn value_type_string() {
         // Strings must be ASCII
-        assert_parses!(value_type::string("abc\t.\t123"), "abc\t.\t123");
+        assert_parses!(value_type::string("abc.123"), "abc.123");
         // ... but cannot contain control characters
-        // TODO: implement this (nicely)
-        // assert_errors!(value_type::string("abc\x07123"));
+        assert_errors!(value_type::string("abc\x07123"));
         // Strings cannot contain non-ASCII characters
-        // TODO: implement this (nicely)
-        // assert_errors!(value_type::string("🥺🐶💜"));
+        assert_errors!(value_type::string("🥺🐶💜"));
     }
 
     #[test]
     fn value_type_localestring() {
-        // Locale strings can be UTF-8 and contain control characters
+        // Locale strings can be UTF-8
         assert_parses!(
-            value_type::locale_string("abc\t\x07.💜🐶💜\t123"),
-            "abc\t\x07.💜🐶💜\t123"
+            value_type::locale_string("abc.💜🐶💜.123"),
+            "abc.💜🐶💜.123"
         );
+        // ... but still cannot contain control characters
+        assert_errors!(value_type::locale_string("abc.💜🐶💜.1\x0723"));
     }
+
     #[test]
     fn value_type_iconstring() {
-        // Icon strings can be UTF-8 and contain control characters
+        // Icon strings can be UTF-8
         assert_parses!(
-            value_type::icon_string("abc\t\x07.💜🐶💜\t123"),
-            "abc\t\x07.💜🐶💜\t123"
+            value_type::locale_string("abc.💜🐶💜.123"),
+            "abc.💜🐶💜.123"
         );
+        // ... but still cannot contain control characters
+        assert_errors!(value_type::locale_string("abc.💜🐶💜.1\x0723"));
     }
 
     #[test]
