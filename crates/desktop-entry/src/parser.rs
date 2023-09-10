@@ -30,18 +30,58 @@ peg::parser! {
     }
 }
 
+#[derive(Clone, Copy)]
+enum Semicolons {
+    Escaped,
+    Raw,
+}
+
 peg::parser! {
     pub grammar value_parser() for str {
-        rule escape() -> char
+        rule string_escape(semicolons: Semicolons) -> char
             = "\\" c:(
                 "s" { ' ' }
                 / "n" { '\n' }
                 / "t" { '\t' }
                 / "r" { '\r' }
+                / ";" {?
+                    match semicolons {
+                        Semicolons::Escaped => Ok(';'),
+                        Semicolons::Raw => Err("")
+                    }
+                }
                 / "\\" { '\\' }
                 / expected!("")
             ) { c };
-        pub rule string() -> String = s:(escape() / [_])* { s.iter().collect::<String>() };
+        rule string_char(semicolons: Semicolons) -> char
+            = [^';']
+            / ";" {?
+                match semicolons {
+                    Semicolons::Escaped => Err(""),
+                    Semicolons::Raw => Ok(';')
+                }
+            };
+
+        rule string_internal(semicolons: Semicolons) -> String
+            = s:(string_escape(semicolons) / string_char(semicolons))* {
+                s.iter().collect::<String>()
+            };
+        rule string_raw_semicolons() -> String = string_internal(Semicolons::Raw);
+        rule string_escaped_semicolons() -> String = string_internal(Semicolons::Escaped);
+
+        pub rule string() -> String = string_raw_semicolons();
+        pub rule strings() -> Vec<String> = ss:(string_escaped_semicolons() ** ";") {
+            let mut ss = ss;
+
+            // Optional termination with `;` results in an empty string as the final entry. Remove
+            // it if it's not the only entry.
+            let len = ss.len();
+            if len > 1 && ss[len - 1].is_empty() {
+                ss.pop();
+            }
+
+            ss
+        };
 
         pub rule boolean() -> bool = "true" { true } / "false" { false };
     }
@@ -139,6 +179,53 @@ mod value_tests {
         assert_parses!(
             string(r"a \s b \n c \t d \r e \\ f"),
             "a   b \n c \t d \r e \\ f".to_string()
+        );
+    }
+
+    #[test]
+    fn parse_strings() {
+        // String lists cannot be empty, they always contain at least one (maybe empty) string
+        assert_parses!(strings(r""), vec!["".to_string()]);
+        assert_parses!(strings(r";"), vec!["".to_string()]);
+        assert_parses!(strings(r"dog"), vec!["dog".to_string()]);
+        assert_parses!(strings(r"dog;"), vec!["dog".to_string()]);
+        // ... but can of course contain several strings
+        assert_parses!(
+            strings(r"dog;cat;bird"),
+            vec!["dog".to_string(), "cat".to_string(), "bird".to_string()]
+        );
+        assert_parses!(
+            strings(r"dog;cat;bird;"),
+            vec!["dog".to_string(), "cat".to_string(), "bird".to_string()]
+        );
+        // Strings in the list can contain semicolons, if they're escaped
+        assert_parses!(
+            strings(r"dog\;cat;bird"),
+            vec!["dog;cat".to_string(), "bird".to_string()]
+        );
+        assert_parses!(
+            strings(r"dog\;cat;bird;"),
+            vec!["dog;cat".to_string(), "bird".to_string()]
+        );
+        assert_parses!(
+            strings(r"dog;cat\;bird"),
+            vec!["dog".to_string(), "cat;bird".to_string()]
+        );
+        assert_parses!(
+            strings(r"dog;cat\;bird;"),
+            vec!["dog".to_string(), "cat;bird".to_string()]
+        );
+        assert_parses!(
+            strings(r"dog;cat;bird\;"),
+            vec!["dog".to_string(), "cat".to_string(), "bird;".to_string()]
+        );
+        assert_parses!(
+            strings(r"dog\;cat\;bird;"),
+            vec!["dog;cat;bird".to_string()]
+        );
+        assert_parses!(
+            strings(r"dog\;cat\;bird\;"),
+            vec!["dog;cat;bird;".to_string()]
         );
     }
 

@@ -258,6 +258,12 @@ impl FromValue for String {
     }
 }
 
+impl FromValue for Vec<String> {
+    fn from_value(value: &str) -> Result<Self, ParseError> {
+        Ok(value_parser::strings(value)?)
+    }
+}
+
 impl FromValue for bool {
     fn from_value(value: &str) -> Result<Self, ParseError> {
         Ok(value_parser::boolean(value)?)

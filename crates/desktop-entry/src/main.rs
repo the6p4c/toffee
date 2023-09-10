@@ -33,7 +33,7 @@ fn main() -> Result<(), String> {
         ),
     };
 
-    let (key, value) = match key.as_deref() {
+    let (key, value, meta) = match key.as_deref() {
         None => {
             println!("[{group_name}]");
             println!("{group:#?}");
@@ -49,26 +49,39 @@ fn main() -> Result<(), String> {
             let value = || match value_type.as_deref() {
                 None => {
                     let value = group.get(key).ok_or(Error::NotFound)?;
-                    Ok(format!("{value:#?}"))
+
+                    Ok((format!("{value:#?}"), "".to_string()))
                 }
                 Some("string") | Some("localestring") | Some("iconstring") => {
                     let value: String = group
                         .get_value(key)
                         .ok_or(Error::NotFound)?
                         .map_err(|_| Error::Parse("string"))?;
-                    Ok(value.to_string())
+
+                    Ok((value.to_string(), "".to_string()))
+                }
+                Some("strings") | Some("localestrings") | Some("iconstrings") => {
+                    let value: Vec<String> = group
+                        .get_value(key)
+                        .ok_or(Error::NotFound)?
+                        .map_err(|_| Error::Parse("strings"))?;
+
+                    let len = value.len();
+                    let word = if len == 1 { "item" } else { "items" };
+                    Ok((value.join("\n---\n"), format!(" ({len} {word})")))
                 }
                 Some("boolean") => {
-                    let value: String = group
+                    let value: bool = group
                         .get_value(key)
                         .ok_or(Error::NotFound)?
                         .map_err(|_| Error::Parse("boolean"))?;
-                    Ok(value.to_string())
+
+                    Ok((value.to_string(), "".to_string()))
                 }
                 Some(value_type) => Err(Error::UnknownValueType(value_type)),
             };
 
-            let value = value().map_err(|err| match err {
+            let (value, meta) = value().map_err(|err| match err {
                 Error::UnknownValueType(value_type) => format!("unknown value type {value_type}"),
                 Error::NotFound => format!("key {key} not found in group {group_name}"),
                 Error::Parse(value_type) => {
@@ -76,11 +89,11 @@ fn main() -> Result<(), String> {
                 }
             })?;
 
-            (key, value)
+            (key, value, meta)
         }
     };
 
-    println!("[{group_name}].{key}");
+    println!("[{group_name}].{key}{meta}");
     println!("{value}");
 
     Ok(())
