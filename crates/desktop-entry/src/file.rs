@@ -160,6 +160,7 @@ pub enum Key<'a> {
     Locale(LocaleKey<'a>),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LocaleKey<'a> {
     pub key: &'a str,
     pub lang: &'a str,
@@ -197,15 +198,15 @@ impl LocaleKey<'_> {
     }
 }
 
-impl<'a> Into<Key<'a>> for &'a str {
-    fn into(self) -> Key<'a> {
-        Key::String(self)
+impl<'a> From<&'a str> for Key<'a> {
+    fn from(value: &'a str) -> Self {
+        Self::String(value)
     }
 }
 
-impl<'a> Into<Key<'a>> for LocaleKey<'a> {
-    fn into(self) -> Key<'a> {
-        Key::Locale(self)
+impl<'a> From<LocaleKey<'a>> for Key<'a> {
+    fn from(value: LocaleKey<'a>) -> Self {
+        Self::Locale(value)
     }
 }
 
