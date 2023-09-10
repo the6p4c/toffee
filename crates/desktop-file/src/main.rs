@@ -1,7 +1,7 @@
 use std::env;
 use std::fs;
 
-use desktop_file::DesktopFile;
+use desktop_file::{desktop_entry, DesktopFile};
 
 fn main() -> Result<(), String> {
     let mut args = env::args().fuse();
@@ -75,7 +75,7 @@ fn main() -> Result<(), String> {
                     let len = value.len();
                     let word = if len == 1 { "item" } else { "items" };
                     Ok((
-                        value.join("\n---\n"),
+                        value.join("\n===\n"),
                         format!("{value_type} ({len} {word})"),
                     ))
                 }
@@ -86,6 +86,37 @@ fn main() -> Result<(), String> {
                         .map_err(|_| Error::Parse("bool"))?;
 
                     Ok((value.to_string(), "boolean".to_string()))
+                }
+                "DE_Exec" => {
+                    let desktop_entry::Exec { program, arguments } = group
+                        .get_value(key)
+                        .ok_or(Error::NotFound)?
+                        .map_err(|_| Error::Parse("desktop_entry::Exec"))?;
+
+                    let num_args = arguments.len();
+                    let word = if num_args == 1 { "arg" } else { "args" };
+
+                    let value = format!(
+                        "{program}{}",
+                        arguments
+                            .into_iter()
+                            .enumerate()
+                            .map(|(i, argument)| {
+                                let prefix = format!("\n=== ${}", i + 1);
+                                match argument {
+                                    desktop_entry::ExecArgument::String(s) => {
+                                        format!("{prefix} -- string\n{s}")
+                                    }
+                                    desktop_entry::ExecArgument::FieldCode(fc) => {
+                                        format!("{prefix} -- field code\n%{fc}")
+                                    }
+                                }
+                            })
+                            .collect::<Vec<String>>()
+                            .join("")
+                    );
+
+                    Ok((value, format!("{value_type} ({num_args} {word})")))
                 }
                 value_type => Err(Error::UnknownValueType(value_type)),
             };
