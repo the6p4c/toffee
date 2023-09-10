@@ -52,6 +52,11 @@ fn main() -> Result<(), String> {
 
                     Ok((format!("{value:#?}"), "".to_string()))
                 }
+                Some("RAW") => {
+                    let value = group.get(key).ok_or(Error::NotFound)?;
+
+                    Ok((value.to_string(), "".to_string()))
+                }
                 Some("string") | Some("localestring") | Some("iconstring") => {
                     let value: String = group
                         .get_value(key)
