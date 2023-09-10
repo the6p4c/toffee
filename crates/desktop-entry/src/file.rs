@@ -81,7 +81,7 @@ impl fmt::Display for DesktopFileError<'_> {
 
 #[derive(Debug)]
 pub struct DesktopFile<'input> {
-    pub(self) groups: HashMap<&'input str, HashMap<&'input str, &'input str>>,
+    pub(self) groups: HashMap<&'input str, Group<'input>>,
 }
 
 impl<'input> DesktopFile<'input> {
@@ -95,7 +95,7 @@ impl<'input> DesktopFile<'input> {
             match line {
                 Line::Blank | Line::Comment(_) => {}
                 Line::GroupHeader(group_name) => {
-                    if groups.insert(group_name, HashMap::new()).is_some() {
+                    if groups.insert(group_name, Group::new()).is_some() {
                         return Err(DesktopFileError::DuplicateGroup(group_name));
                     }
                     current_group_name = Some(group_name);
@@ -105,7 +105,7 @@ impl<'input> DesktopFile<'input> {
                         current_group_name.ok_or(DesktopFileError::EntryOutsideOfGroup(key))?;
 
                     let group = groups.get_mut(group_name).expect("current group to exist");
-                    if group.insert(key, value).is_some() {
+                    if group.entries.insert(key, value).is_some() {
                         return Err(DesktopFileError::DuplicateKey(key));
                     }
                 }
@@ -113,6 +113,37 @@ impl<'input> DesktopFile<'input> {
         }
 
         Ok(Self { groups })
+    }
+
+    pub fn group(&self, group_name: &str) -> Option<&Group> {
+        self.groups.get(group_name)
+    }
+
+    pub fn groups(&self) -> impl Iterator<Item = (&str, &Group)> {
+        self.groups
+            .iter()
+            .map(|(group_name, group)| (*group_name, group))
+    }
+}
+
+#[derive(Debug)]
+pub struct Group<'input> {
+    pub(self) entries: HashMap<&'input str, &'input str>,
+}
+
+impl Group<'_> {
+    fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+        }
+    }
+
+    pub fn get(&self, key: &str) -> Option<&str> {
+        self.entries.get(key).copied()
+    }
+
+    pub fn entries(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.entries.iter().map(|(key, value)| (*key, *value))
     }
 }
 
@@ -150,8 +181,6 @@ peg::parser! {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use indoc::indoc;
 
     use super::parser::*;
@@ -161,8 +190,8 @@ mod tests {
 
     #[test]
     fn desktop_file_empty() {
-        let file = DesktopFile::parse("").unwrap();
-        assert_eq!(file.groups, HashMap::from([]));
+        // should simply succeed
+        let _file = DesktopFile::parse("").unwrap();
     }
 
     #[test]
@@ -175,13 +204,17 @@ mod tests {
             k3=v3
         "})
         .unwrap();
-        assert_eq!(
-            file.groups,
-            HashMap::from([
-                ("group1", HashMap::from([("k1", "v1"), ("k2", "v2")])),
-                ("group2", HashMap::from([("k3", "v3")]))
-            ])
-        );
+
+        // simple getters
+        assert_eq!(file.group("group1").unwrap().get("k1").unwrap(), "v1");
+        assert_eq!(file.group("group1").unwrap().get("k2").unwrap(), "v2");
+        assert!(file.group("group1").unwrap().get("k3").is_none());
+
+        assert!(file.group("group2").unwrap().get("k1").is_none());
+        assert!(file.group("group2").unwrap().get("k2").is_none());
+        assert_eq!(file.group("group2").unwrap().get("k3").unwrap(), "v3");
+
+        assert!(file.group("group3").is_none());
     }
 
     #[test]
