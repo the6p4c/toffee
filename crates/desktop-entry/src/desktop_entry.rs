@@ -8,8 +8,8 @@ pub enum ExecArgument {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Exec {
-    program: String,
-    arguments: Vec<ExecArgument>,
+    pub program: String,
+    pub arguments: Vec<ExecArgument>,
 }
 
 peg::parser! {
