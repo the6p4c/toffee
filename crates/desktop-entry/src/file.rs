@@ -31,8 +31,9 @@
 //! - repr: The specification states that "Multiple groups may not have the same name." I don't see
 //!   how this makes sense - if two groups have the same name, they are the same group. Presumably,
 //!   this is intended to communicate that you cannot add keys to a previously created but not
-//!   currently "active" group. As such, **we raise a "duplicate group" error in a case such as the
-//!   following:**
+//!   currently "active" group. For example, [TOML disallows definining a table more than
+//!   once](https://toml.io/en/v1.0.0#table). As such, **we raise a "duplicate group" error in a
+//!   case such as the following:**
 //!   ```text
 //!   [group1]
 //!   k1=v1
