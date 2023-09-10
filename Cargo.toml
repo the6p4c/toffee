@@ -8,4 +8,4 @@ members = ["crates/desktop-entry"]
 
 [dependencies]
 eframe = "0.22.0"
-freedesktop-desktop-entry = "0.5.0"
+desktop-entry = { path = "crates/desktop-entry" }

@@ -1,5 +1,5 @@
+use desktop_entry::DesktopFile;
 use eframe::egui;
-use freedesktop_desktop_entry as desktop;
 use std::fs;
 use std::process::Command;
 
@@ -26,15 +26,15 @@ impl DRun {
             let path = entry.path();
 
             let contents = fs::read_to_string(&path).unwrap();
-            let entry = desktop::DesktopEntry::decode(&path, &contents).unwrap();
+            let file = DesktopFile::parse(&contents).unwrap();
 
-            let desktop_entry = &entry.groups["Desktop Entry"];
-            let name = desktop_entry["Name"].0.to_owned();
-            let keywords = desktop_entry
-                .get("Keywords")
-                .map(|k| k.0.split(";").map(|s| (*s).to_owned()).collect())
-                .unwrap_or_else(|| vec![]);
-            let exec = desktop_entry["Exec"].0.to_owned();
+            let desktop_entry = file.group("Desktop Entry").unwrap();
+            let name: String = desktop_entry.get_value("Name").unwrap().unwrap();
+            let keywords: Vec<String> = desktop_entry
+                .get_value("Keywords")
+                .unwrap_or_else(|| Ok(vec![]))
+                .unwrap();
+            let exec: String = desktop_entry.get_value("Exec").unwrap().unwrap();
             entries.push(Entry {
                 name,
                 keywords,
