@@ -21,6 +21,13 @@
 //!     `Name[hi]= XMPP हँसमुख प्रसंग` from [kemoticons](https://invent.kde.org/frameworks/kemoticons/-/blob/c010010955e6ac0febe73fca1e28665e1840b4c0/src/providers/xmpp/emoticonstheme_xmpp.desktop#L33).
 //! - parser: Is the empty string a valid key? This parser requires that **all keys must be
 //!   non-empty.**
+//! - parser: Keys can contain a locale suffix, enclosed in square brackets. This isn't mentioned at
+//!   all when the specification defines keys, and further the expected format of the locale string
+//!   is underspecified. It is simply specified that a key may be suffixed with a locale string
+//!   (e.g. `key[locale]=value`). We implement this such that **the locale string may only contain
+//!   the characters `A-Z`, `a-z`, `0-9`, `-`, `_`, `.`, and `@`** (that is, all characters allowed
+//!   in keys plus `_`, `.`, and `@` to support `LC_MESSAGES` style `lang_COUNTRY.ENCODING@MODIFIER`
+//!   locale strings).
 //! - repr: The specification states that "Multiple groups may not have the same name." I don't see
 //!   how this makes sense - if two groups have the same name, they are the same group. Presumably,
 //!   this is intended to communicate that you cannot add keys to a previously created but not
@@ -108,7 +115,8 @@ peg::parser! {
 
         pub(super) rule line_group_header() -> &'input str = "[" gn:$([^'[' | ']']+) "]\n" { gn };
 
-        rule key() -> &'input str = $(['A'..='Z' | 'a'..='z' | '0'..='9' | '-']+);
+        rule locale() = "[" ['A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '@']* "]";
+        rule key() -> &'input str = $(['A'..='Z' | 'a'..='z' | '0'..='9' | '-']+ locale()?);
         rule value() -> &'input str = $([^'\n']*);
         pub(super) rule line_entry() -> (&'input str, &'input str)
             = k:key() " "* "=" " "* v:value() "\n" { (k, v) };
@@ -249,6 +257,16 @@ mod tests {
         assert_errors!(line_entry("key!=value\n"));
         assert_errors!(line_entry("k_ey=value\n"));
         assert_errors!(line_entry("ke🥺y=value\n"));
+        // Keys can also include a locale
+        assert_eq!(
+            line_entry("key[en_AU.UTF-8@Latn]=value\n"),
+            Ok(("key[en_AU.UTF-8@Latn]", "value"))
+        );
+        // ... which must be at the end of the key
+        assert_errors!(line_entry("ke[locale]y=value\n"));
+        // ... and cannot contain '[' or ']'
+        assert_errors!(line_entry("key[loc[ale]=value\n"));
+        assert_errors!(line_entry("key[loc]ale]=value\n"));
         // An '=' must be present
         assert_errors!(line_entry("key\n"));
         // Keys must be non-empty (TODO: is this true?)
