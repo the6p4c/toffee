@@ -1,7 +1,7 @@
 use std::env;
 use std::fs;
 
-use desktop_entry::file::DesktopFile;
+use desktop_entry::DesktopFile;
 
 fn main() -> Result<(), String> {
     let args = env::args().collect::<Vec<_>>();
