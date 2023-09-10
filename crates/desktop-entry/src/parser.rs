@@ -51,10 +51,9 @@ peg::parser! {
                     }
                 }
                 / "\\" { '\\' }
-                / expected!("")
             ) { c };
         rule string_char(semicolons: Semicolons) -> char
-            = [^';']
+            = [^';' | '\\']
             / ";" {?
                 match semicolons {
                     Semicolons::Escaped => Err(""),
@@ -180,6 +179,8 @@ mod value_tests {
             string(r"a \s b \n c \t d \r e \\ f"),
             "a   b \n c \t d \r e \\ f".to_string()
         );
+        // But invalid escape sequences are invalid
+        assert_errors!(string(r"\q"));
     }
 
     #[test]
