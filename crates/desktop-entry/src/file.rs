@@ -172,20 +172,26 @@ impl LocaleKey<'_> {
         let (key, lang) = (self.key, self.lang);
         let mut matches = Vec::with_capacity(5);
 
+        // `lang_COUNTRY@MODIFIER`
         if let (Some(country), Some(modifier)) = (self.country, self.modifier) {
             matches.push(format!("{key}[{lang}_{country}@{modifier}]"));
         }
 
+        // `lang_COUNTRY`
         if let Some(country) = self.country {
             matches.push(format!("{key}[{lang}_{country}]"));
         }
 
+        // `lang@MODIFIER`
         if let Some(modifier) = self.modifier {
             matches.push(format!("{key}[{lang}@{modifier}]"));
         }
 
+        // `lang`
         matches.push(format!("{key}[{lang}]"));
-        matches.push(format!("{key}"));
+
+        // default value
+        matches.push(key.to_string());
 
         matches
     }
