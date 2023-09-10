@@ -3,5 +3,5 @@
 //! This crate is based on freedesktop.org's `desktop-entry-spec`, version 1.5, available at
 //! <https://specifications.freedesktop.org/desktop-entry-spec/desktop-entry-spec-latest.html>.
 
-mod file;
+pub mod file;
 mod parser_util;
