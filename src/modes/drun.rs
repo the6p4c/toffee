@@ -77,7 +77,7 @@ impl Mode for DRun {
         });
 
         if toffee.input_changed() {
-            eprintln!("input changed: {}", input);
+            trace!("input changed: {}", input);
         }
         if let Some(entry) = toffee.selected_entry() {
             let Exec { program, arguments } = &entry.exec;
