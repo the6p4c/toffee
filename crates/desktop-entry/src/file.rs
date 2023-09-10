@@ -53,6 +53,7 @@
 //!     and `]`.
 
 use std::collections::HashMap;
+use std::fmt;
 
 #[derive(Debug, PartialEq)]
 pub enum DesktopFileError<'input> {
@@ -60,6 +61,21 @@ pub enum DesktopFileError<'input> {
     EntryOutsideOfGroup(&'input str),
     DuplicateGroup(&'input str),
     DuplicateKey(&'input str),
+}
+
+impl fmt::Display for DesktopFileError<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Parse => write!(f, "parse"),
+            Self::EntryOutsideOfGroup(key) => {
+                write!(f, "key outside of group (key \"{key}\")")
+            }
+            Self::DuplicateGroup(group_name) => {
+                write!(f, "duplicate group (group name \"{group_name}\")")
+            }
+            Self::DuplicateKey(key) => write!(f, "duplicate key (key \"{key}\")"),
+        }
+    }
 }
 
 #[derive(Debug)]
