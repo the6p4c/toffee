@@ -62,11 +62,28 @@ mod parser_util;
 use std::collections::HashMap;
 use std::fmt;
 
-use parser::{file_parser, Line};
+use parser::{file_parser, value_parser, Line};
+
+#[derive(Debug, PartialEq)]
+pub struct ParseError {
+    inner: peg::error::ParseError<peg::str::LineCol>,
+}
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.inner)
+    }
+}
+
+impl From<peg::error::ParseError<peg::str::LineCol>> for ParseError {
+    fn from(inner: peg::error::ParseError<peg::str::LineCol>) -> Self {
+        ParseError { inner }
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub enum DesktopFileError<'input> {
-    Parse,
+    Parse(ParseError),
     EntryOutsideOfGroup(&'input str),
     DuplicateGroup(&'input str),
     DuplicateKey(&'input str),
@@ -75,7 +92,7 @@ pub enum DesktopFileError<'input> {
 impl fmt::Display for DesktopFileError<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Parse => write!(f, "parse"),
+            Self::Parse(err) => write!(f, "parse: {err}"),
             Self::EntryOutsideOfGroup(key) => {
                 write!(f, "key outside of group (key \"{key}\")")
             }
@@ -87,6 +104,12 @@ impl fmt::Display for DesktopFileError<'_> {
     }
 }
 
+impl From<peg::error::ParseError<peg::str::LineCol>> for DesktopFileError<'_> {
+    fn from(inner: peg::error::ParseError<peg::str::LineCol>) -> Self {
+        DesktopFileError::Parse(inner.into())
+    }
+}
+
 #[derive(Debug)]
 pub struct DesktopFile<'input> {
     pub(self) groups: HashMap<&'input str, Group<'input>>,
@@ -94,8 +117,7 @@ pub struct DesktopFile<'input> {
 
 impl<'input> DesktopFile<'input> {
     pub fn parse(s: &'input str) -> Result<Self, DesktopFileError> {
-        // TODO: pass parse error up to caller
-        let lines = file_parser::file(s).map_err(|_| DesktopFileError::Parse)?;
+        let lines = file_parser::file(s)?;
 
         let mut groups = HashMap::new();
         let mut current_group_name = None;
@@ -159,6 +181,13 @@ impl Group<'_> {
         entry.copied()
     }
 
+    pub fn get_value<'a, K: Into<Key<'a>>, V: FromValue>(
+        &self,
+        key: K,
+    ) -> Option<Result<V, ParseError>> {
+        self.get(key).map(|value| V::from_value(value))
+    }
+
     pub fn entries(&self) -> impl Iterator<Item = (&str, &str)> {
         self.entries.iter().map(|(key, value)| (*key, *value))
     }
@@ -216,6 +245,22 @@ impl<'a> From<&'a str> for Key<'a> {
 impl<'a> From<LocaleKey<'a>> for Key<'a> {
     fn from(value: LocaleKey<'a>) -> Self {
         Self::Locale(value)
+    }
+}
+
+pub trait FromValue: Sized {
+    fn from_value(value: &str) -> Result<Self, ParseError>;
+}
+
+impl FromValue for String {
+    fn from_value(value: &str) -> Result<Self, ParseError> {
+        Ok(value_parser::string(value)?)
+    }
+}
+
+impl FromValue for bool {
+    fn from_value(value: &str) -> Result<Self, ParseError> {
+        Ok(value_parser::boolean(value)?)
     }
 }
 
@@ -330,7 +375,7 @@ mod tests {
             k=v
         "})
         .unwrap_err();
-        assert_eq!(err, DesktopFileError::Parse);
+        assert!(matches!(err, DesktopFileError::Parse(_)));
     }
 
     #[test]

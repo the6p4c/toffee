@@ -4,21 +4,84 @@ use std::fs;
 use desktop_entry::DesktopFile;
 
 fn main() -> Result<(), String> {
-    let args = env::args().collect::<Vec<_>>();
-    let filename = match &args[..] {
-        [_, filename] => Ok(filename),
-        _ => Err(
-            "expected the path to a .desktop file as the first and only command-line argument"
-                .to_string(),
-        ),
-    }?;
+    let mut args = env::args().fuse();
+    args.next(); // skip argv[0]
+    let filename = args
+        .next()
+        .ok_or("expected the path to a .desktop file as the first command-line argument")?;
+    let group_name = args.next();
+    let key = args.next();
+    let value_type = args.next();
+    if args.next().is_some() {
+        return Err("too many command-line arguments".to_string());
+    }
 
     let text = fs::read_to_string(filename)
         .map_err(|err| format!("could not read .desktop file - {err}"))?;
     let file = DesktopFile::parse(&text)
         .map_err(|err| format!("could not parse .desktop file - {err}"))?;
 
-    dbg!(file); // TODO: nicer output
+    let (group, group_name) = match group_name {
+        None => {
+            println!("{file:#?}");
+            return Ok(());
+        }
+        Some(group_name) => (
+            file.group(&group_name)
+                .ok_or_else(|| format!("could not find group {group_name}"))?,
+            group_name,
+        ),
+    };
+
+    let (key, value) = match key.as_deref() {
+        None => {
+            println!("[{group_name}]");
+            println!("{group:#?}");
+            return Ok(());
+        }
+        Some(key) => {
+            enum Error<'a> {
+                UnknownValueType(&'a str),
+                NotFound,
+                Parse(&'a str),
+            }
+
+            let value = || match value_type.as_deref() {
+                None => {
+                    let value = group.get(key).ok_or(Error::NotFound)?;
+                    Ok(format!("{value:#?}"))
+                }
+                Some("string") | Some("localestring") | Some("iconstring") => {
+                    let value: String = group
+                        .get_value(key)
+                        .ok_or(Error::NotFound)?
+                        .map_err(|_| Error::Parse("string"))?;
+                    Ok(value.to_string())
+                }
+                Some("boolean") => {
+                    let value: String = group
+                        .get_value(key)
+                        .ok_or(Error::NotFound)?
+                        .map_err(|_| Error::Parse("boolean"))?;
+                    Ok(value.to_string())
+                }
+                Some(value_type) => Err(Error::UnknownValueType(value_type)),
+            };
+
+            let value = value().map_err(|err| match err {
+                Error::UnknownValueType(value_type) => format!("unknown value type {value_type}"),
+                Error::NotFound => format!("key {key} not found in group {group_name}"),
+                Error::Parse(value_type) => {
+                    format!("could not parse key {key} from group {group_name} as {value_type}")
+                }
+            })?;
+
+            (key, value)
+        }
+    };
+
+    println!("[{group_name}].{key}");
+    println!("{value}");
 
     Ok(())
 }

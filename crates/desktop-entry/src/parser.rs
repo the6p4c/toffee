@@ -30,6 +30,23 @@ peg::parser! {
     }
 }
 
+peg::parser! {
+    pub grammar value_parser() for str {
+        rule escape() -> char
+            = "\\" c:(
+                "s" { ' ' }
+                / "n" { '\n' }
+                / "t" { '\t' }
+                / "r" { '\r' }
+                / "\\" { '\\' }
+                / expected!("")
+            ) { c };
+        pub rule string() -> String = s:(escape() / [_])* { s.iter().collect::<String>() };
+
+        pub rule boolean() -> bool = "true" { true } / "false" { false };
+    }
+}
+
 #[cfg(test)]
 mod file_tests {
     use super::file_parser::*;
@@ -98,5 +115,39 @@ mod file_tests {
         assert_parses!(line_entry("key=\n"), ("key", ""));
         // Any line must end with a linefeed
         assert_errors!(line_entry("key=value"));
+    }
+}
+
+#[cfg(test)]
+mod value_tests {
+    use super::value_parser::*;
+    use crate::{assert_errors, assert_parses};
+
+    #[test]
+    fn parse_string() {
+        // Strings can empty
+        assert_parses!(string(r""), "".to_string());
+        // ... or not
+        assert_parses!(string(r"puppy"), "puppy".to_string());
+        // They can contain single escape sequences
+        assert_parses!(string(r"\s"), " ".to_string());
+        assert_parses!(string(r"\n"), "\n".to_string());
+        assert_parses!(string(r"\t"), "\t".to_string());
+        assert_parses!(string(r"\r"), "\r".to_string());
+        assert_parses!(string(r"\\"), "\\".to_string());
+        // ... or many
+        assert_parses!(
+            string(r"a \s b \n c \t d \r e \\ f"),
+            "a   b \n c \t d \r e \\ f".to_string()
+        );
+    }
+
+    #[test]
+    fn parse_boolean() {
+        // Booleans are either true or false
+        assert_parses!(boolean("true"), true);
+        assert_parses!(boolean("false"), false);
+        // Anything else isn't a boolean
+        assert_errors!(boolean("blorp"));
     }
 }
