@@ -59,16 +59,16 @@ fn main() -> Result<(), String> {
                     Ok((value.to_string(), "raw".to_string()))
                 }
                 "string" | "localestring" | "iconstring" => {
-                    let value: String = group
-                        .get_value(key)
+                    let value = group
+                        .get_value::<String>(key)
                         .ok_or(Error::NotFound)?
                         .map_err(|_| Error::Parse("String"))?;
 
-                    Ok((value.to_string(), value_type.to_string()))
+                    Ok((value, value_type.to_string()))
                 }
                 "strings" | "localestrings" | "iconstrings" => {
-                    let value: Vec<String> = group
-                        .get_value(key)
+                    let value = group
+                        .get_value::<Vec<String>>(key)
                         .ok_or(Error::NotFound)?
                         .map_err(|_| Error::Parse("Vec<String>"))?;
 
@@ -80,8 +80,8 @@ fn main() -> Result<(), String> {
                     ))
                 }
                 "boolean" => {
-                    let value: bool = group
-                        .get_value(key)
+                    let value = group
+                        .get_value::<bool>(key)
                         .ok_or(Error::NotFound)?
                         .map_err(|_| Error::Parse("bool"))?;
 
@@ -116,7 +116,7 @@ fn main() -> Result<(), String> {
                             .join("")
                     );
 
-                    Ok((value, format!("{value_type} ({num_args} {word})")))
+                    Ok((value, format!("desktop entry Exec ({num_args} {word})")))
                 }
                 value_type => Err(Error::UnknownValueType(value_type)),
             };

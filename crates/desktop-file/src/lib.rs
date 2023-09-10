@@ -182,9 +182,9 @@ impl Group<'_> {
         entry.copied()
     }
 
-    pub fn get_value<'a, K: Into<Key<'a>>, V: FromValue>(
+    pub fn get_value<'a, V: FromValue>(
         &self,
-        key: K,
+        key: impl Into<Key<'a>>,
     ) -> Option<Result<V, ParseError>> {
         self.get(key).map(|value| V::from_value(value))
     }

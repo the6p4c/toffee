@@ -1,6 +1,7 @@
+use desktop_file::desktop_entry::{Exec, ExecArgument};
 use desktop_file::DesktopFile;
 use eframe::egui;
-use log::trace;
+use log::{info, trace};
 use std::fs;
 use std::process::Command;
 
@@ -10,7 +11,7 @@ use crate::toffee::{Toffee, ToffeeData};
 struct Entry {
     name: String,
     keywords: Vec<String>,
-    exec: String,
+    exec: Exec,
 }
 
 pub struct DRun {
@@ -30,12 +31,12 @@ impl DRun {
             let file = DesktopFile::parse(&contents).unwrap();
 
             let desktop_entry = file.group("Desktop Entry").unwrap();
-            let name: String = desktop_entry.get_value("Name").unwrap().unwrap();
-            let keywords: Vec<String> = desktop_entry
-                .get_value("Keywords")
+            let name = desktop_entry.get_value::<String>("Name").unwrap().unwrap();
+            let keywords = desktop_entry
+                .get_value::<Vec<String>>("Keywords")
                 .unwrap_or_else(|| Ok(vec![]))
                 .unwrap();
-            let exec: String = desktop_entry.get_value("Exec").unwrap().unwrap();
+            let exec = desktop_entry.get_value::<Exec>("Exec").unwrap().unwrap();
 
             entries.push(Entry {
                 name,
@@ -79,15 +80,18 @@ impl Mode for DRun {
             eprintln!("input changed: {}", input);
         }
         if let Some(entry) = toffee.selected_entry() {
-            eprintln!("selected: {}", entry.name);
-            eprintln!("    {}", entry.exec);
+            let Exec { program, arguments } = &entry.exec;
+            let arguments = arguments
+                .into_iter()
+                .flat_map(|argument| match argument {
+                    ExecArgument::String(s) => Some(s.clone()),
+                    ExecArgument::FieldCode(_) => None,
+                })
+                .collect::<Vec<String>>();
 
-            // HACK: this doesn't deal with variables or quoting properly
-            // see https://specifications.freedesktop.org/desktop-entry-spec/desktop-entry-spec-latest.html#exec-variables
-            let mut fields = entry.exec.split(' ');
-            let program = fields.next().unwrap();
-            let args = fields;
-            Command::new(program).args(args).spawn().unwrap();
+            info!("launching {:?} with arguments {:?}", program, arguments);
+
+            Command::new(program).args(arguments).spawn().unwrap();
         }
     }
 }
