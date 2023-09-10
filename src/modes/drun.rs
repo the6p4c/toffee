@@ -1,4 +1,4 @@
-use desktop_entry::DesktopFile;
+use desktop_file::DesktopFile;
 use eframe::egui;
 use std::fs;
 use std::process::Command;

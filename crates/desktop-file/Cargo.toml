@@ -1,5 +1,5 @@
 [package]
-name = "desktop-entry"
+name = "desktop-file"
 version = "0.1.0"
 edition = "2021"
 

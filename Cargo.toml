@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace]
-members = ["crates/desktop-entry"]
+members = ["crates/desktop-file"]
 
 [dependencies]
 eframe = "0.22.0"
-desktop-entry = { path = "crates/desktop-entry" }
+desktop-file = { path = "crates/desktop-file" }

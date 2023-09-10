@@ -1,7 +1,7 @@
 use std::env;
 use std::fs;
 
-use desktop_entry::DesktopFile;
+use desktop_file::DesktopFile;
 
 fn main() -> Result<(), String> {
     let mut args = env::args().fuse();
