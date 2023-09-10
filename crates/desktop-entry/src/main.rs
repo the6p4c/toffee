@@ -46,26 +46,27 @@ fn main() -> Result<(), String> {
                 Parse(&'a str),
             }
 
-            let value = || match value_type.as_deref() {
-                None => {
+            let value_type = value_type.as_deref().unwrap_or("RAW_QUOTED");
+            let value = || match value_type {
+                "RAW_QUOTED" => {
                     let value = group.get(key).ok_or(Error::NotFound)?;
 
-                    Ok((format!("{value:#?}"), "".to_string()))
+                    Ok((format!("{value:#?}"), "raw (quoted)".to_string()))
                 }
-                Some("RAW") => {
+                "RAW" => {
                     let value = group.get(key).ok_or(Error::NotFound)?;
 
-                    Ok((value.to_string(), "".to_string()))
+                    Ok((value.to_string(), "raw".to_string()))
                 }
-                Some("string") | Some("localestring") | Some("iconstring") => {
+                "string" | "localestring" | "iconstring" => {
                     let value: String = group
                         .get_value(key)
                         .ok_or(Error::NotFound)?
                         .map_err(|_| Error::Parse("string"))?;
 
-                    Ok((value.to_string(), "".to_string()))
+                    Ok((value.to_string(), value_type.to_string()))
                 }
-                Some("strings") | Some("localestrings") | Some("iconstrings") => {
+                "strings" | "localestrings" | "iconstrings" => {
                     let value: Vec<String> = group
                         .get_value(key)
                         .ok_or(Error::NotFound)?
@@ -73,17 +74,20 @@ fn main() -> Result<(), String> {
 
                     let len = value.len();
                     let word = if len == 1 { "item" } else { "items" };
-                    Ok((value.join("\n---\n"), format!(" ({len} {word})")))
+                    Ok((
+                        value.join("\n---\n"),
+                        format!("{value_type} ({len} {word})"),
+                    ))
                 }
-                Some("boolean") => {
+                "boolean" => {
                     let value: bool = group
                         .get_value(key)
                         .ok_or(Error::NotFound)?
                         .map_err(|_| Error::Parse("boolean"))?;
 
-                    Ok((value.to_string(), "".to_string()))
+                    Ok((value.to_string(), "boolean".to_string()))
                 }
-                Some(value_type) => Err(Error::UnknownValueType(value_type)),
+                value_type => Err(Error::UnknownValueType(value_type)),
             };
 
             let (value, meta) = value().map_err(|err| match err {
@@ -98,7 +102,7 @@ fn main() -> Result<(), String> {
         }
     };
 
-    println!("[{group_name}].{key}{meta}");
+    println!("[{group_name}].{key} -- {meta}");
     println!("{value}");
 
     Ok(())
