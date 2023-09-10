@@ -137,12 +137,69 @@ impl Group<'_> {
         }
     }
 
-    pub fn get(&self, key: &str) -> Option<&str> {
-        self.entries.get(key).copied()
+    pub fn get<'a>(&self, key: impl Into<Key<'a>>) -> Option<&str> {
+        let entry = match key.into() {
+            Key::String(key) => self.entries.get(key),
+            Key::Locale(locale_key) => locale_key
+                .matches()
+                .into_iter()
+                .flat_map(|key| self.entries.get(key.as_str()))
+                .next(),
+        };
+
+        entry.copied()
     }
 
     pub fn entries(&self) -> impl Iterator<Item = (&str, &str)> {
         self.entries.iter().map(|(key, value)| (*key, *value))
+    }
+}
+
+pub enum Key<'a> {
+    String(&'a str),
+    Locale(LocaleKey<'a>),
+}
+
+pub struct LocaleKey<'a> {
+    pub key: &'a str,
+    pub lang: &'a str,
+    pub country: Option<&'a str>,
+    pub modifier: Option<&'a str>,
+}
+
+impl LocaleKey<'_> {
+    fn matches(&self) -> Vec<String> {
+        let (key, lang) = (self.key, self.lang);
+        let mut matches = Vec::with_capacity(5);
+
+        if let (Some(country), Some(modifier)) = (self.country, self.modifier) {
+            matches.push(format!("{key}[{lang}_{country}@{modifier}]"));
+        }
+
+        if let Some(country) = self.country {
+            matches.push(format!("{key}[{lang}_{country}]"));
+        }
+
+        if let Some(modifier) = self.modifier {
+            matches.push(format!("{key}[{lang}@{modifier}]"));
+        }
+
+        matches.push(format!("{key}[{lang}]"));
+        matches.push(format!("{key}"));
+
+        matches
+    }
+}
+
+impl<'a> Into<Key<'a>> for &'a str {
+    fn into(self) -> Key<'a> {
+        Key::String(self)
+    }
+}
+
+impl<'a> Into<Key<'a>> for LocaleKey<'a> {
+    fn into(self) -> Key<'a> {
+        Key::Locale(self)
     }
 }
 
@@ -183,8 +240,7 @@ mod tests {
     use indoc::indoc;
 
     use super::parser::*;
-    use super::DesktopFile;
-    use crate::file::DesktopFileError;
+    use super::{DesktopFile, DesktopFileError, LocaleKey};
     use crate::{assert_errors, assert_parses};
 
     #[test]
@@ -214,6 +270,75 @@ mod tests {
         assert_eq!(file.group("group2").unwrap().get("k3").unwrap(), "v3");
 
         assert!(file.group("group3").is_none());
+    }
+
+    #[test]
+    fn desktop_file_localized() {
+        let file = DesktopFile::parse(indoc! {"
+            [group]
+            Name=default value
+            Name[sr_YU]=localized sr_YU
+            Name[sr@Latn]=localized sr@Latn
+            Name[sr]=localized sr
+        "})
+        .unwrap();
+
+        let group = file.group("group").unwrap();
+        assert_eq!(
+            group
+                .get(LocaleKey {
+                    key: "Name",
+                    lang: "sr",
+                    country: Some("YU"),
+                    modifier: Some("Latn"),
+                })
+                .unwrap(),
+            "localized sr_YU"
+        );
+        assert_eq!(
+            group
+                .get(LocaleKey {
+                    key: "Name",
+                    lang: "sr",
+                    country: Some("YU"),
+                    modifier: None,
+                })
+                .unwrap(),
+            "localized sr_YU"
+        );
+        assert_eq!(
+            group
+                .get(LocaleKey {
+                    key: "Name",
+                    lang: "sr",
+                    country: None,
+                    modifier: Some("Latn"),
+                })
+                .unwrap(),
+            "localized sr@Latn"
+        );
+        assert_eq!(
+            group
+                .get(LocaleKey {
+                    key: "Name",
+                    lang: "sr",
+                    country: None,
+                    modifier: None,
+                })
+                .unwrap(),
+            "localized sr"
+        );
+        assert_eq!(
+            group
+                .get(LocaleKey {
+                    key: "Name",
+                    lang: "de",
+                    country: None,
+                    modifier: None,
+                })
+                .unwrap(),
+            "default value"
+        );
     }
 
     #[test]
@@ -259,6 +384,57 @@ mod tests {
         "})
         .unwrap_err();
         assert_eq!(err, DesktopFileError::DuplicateKey("k1"));
+    }
+
+    #[test]
+    fn locale_key_matches() {
+        // lang_COUNTRY@MODIFIER
+        let locale_key = LocaleKey {
+            key: "key",
+            lang: "de",
+            country: Some("AT"),
+            modifier: Some("euro"),
+        };
+        assert_eq!(
+            locale_key.matches(),
+            vec![
+                "key[de_AT@euro]",
+                "key[de_AT]",
+                "key[de@euro]",
+                "key[de]",
+                "key",
+            ]
+        );
+
+        // lang_COUNTRY
+        let locale_key = LocaleKey {
+            key: "key",
+            lang: "de",
+            country: Some("AT"),
+            modifier: None,
+        };
+        assert_eq!(locale_key.matches(), vec!["key[de_AT]", "key[de]", "key",]);
+
+        // lang@MODIFIER
+        let locale_key = LocaleKey {
+            key: "key",
+            lang: "de",
+            country: None,
+            modifier: Some("euro"),
+        };
+        assert_eq!(
+            locale_key.matches(),
+            vec!["key[de@euro]", "key[de]", "key",]
+        );
+
+        // lang
+        let locale_key = LocaleKey {
+            key: "key",
+            lang: "de",
+            country: None,
+            modifier: None,
+        };
+        assert_eq!(locale_key.matches(), vec!["key[de]", "key",]);
     }
 
     #[test]
