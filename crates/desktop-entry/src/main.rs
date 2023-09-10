@@ -62,7 +62,7 @@ fn main() -> Result<(), String> {
                     let value: String = group
                         .get_value(key)
                         .ok_or(Error::NotFound)?
-                        .map_err(|_| Error::Parse("string"))?;
+                        .map_err(|_| Error::Parse("String"))?;
 
                     Ok((value.to_string(), value_type.to_string()))
                 }
@@ -70,7 +70,7 @@ fn main() -> Result<(), String> {
                     let value: Vec<String> = group
                         .get_value(key)
                         .ok_or(Error::NotFound)?
-                        .map_err(|_| Error::Parse("strings"))?;
+                        .map_err(|_| Error::Parse("Vec<String>"))?;
 
                     let len = value.len();
                     let word = if len == 1 { "item" } else { "items" };
@@ -83,7 +83,7 @@ fn main() -> Result<(), String> {
                     let value: bool = group
                         .get_value(key)
                         .ok_or(Error::NotFound)?
-                        .map_err(|_| Error::Parse("boolean"))?;
+                        .map_err(|_| Error::Parse("bool"))?;
 
                     Ok((value.to_string(), "boolean".to_string()))
                 }
@@ -93,8 +93,8 @@ fn main() -> Result<(), String> {
             let (value, meta) = value().map_err(|err| match err {
                 Error::UnknownValueType(value_type) => format!("unknown value type {value_type}"),
                 Error::NotFound => format!("key {key} not found in group {group_name}"),
-                Error::Parse(value_type) => {
-                    format!("could not parse key {key} from group {group_name} as {value_type}")
+                Error::Parse(rust_type) => {
+                    format!("could not parse key {key} from group {group_name} as {value_type} -> {rust_type}")
                 }
             })?;
 
