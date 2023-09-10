@@ -9,3 +9,5 @@ members = ["crates/desktop-file"]
 [dependencies]
 eframe = "0.22.0"
 desktop-file = { path = "crates/desktop-file" }
+log = "0.4.20"
+env_logger = "0.10.0"

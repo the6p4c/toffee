@@ -47,6 +47,8 @@ impl<M: Mode> eframe::App for App<M> {
 }
 
 fn main() {
+    env_logger::init();
+
     let mode = DRun::new();
 
     let native_options = eframe::NativeOptions {

@@ -1,9 +1,10 @@
 use desktop_file::DesktopFile;
 use eframe::egui;
+use log::trace;
 use std::fs;
 use std::process::Command;
 
-use super::Mode;
+use crate::modes::Mode;
 use crate::toffee::{Toffee, ToffeeData};
 
 struct Entry {
@@ -23,9 +24,9 @@ impl DRun {
         let desktop_files = fs::read_dir("applications/").unwrap();
         for entry in desktop_files {
             let entry = entry.unwrap();
-            let path = entry.path();
+            trace!("reading {:?}", entry);
 
-            let contents = fs::read_to_string(&path).unwrap();
+            let contents = fs::read_to_string(&entry.path()).unwrap();
             let file = DesktopFile::parse(&contents).unwrap();
 
             let desktop_entry = file.group("Desktop Entry").unwrap();
@@ -35,6 +36,7 @@ impl DRun {
                 .unwrap_or_else(|| Ok(vec![]))
                 .unwrap();
             let exec: String = desktop_entry.get_value("Exec").unwrap().unwrap();
+
             entries.push(Entry {
                 name,
                 keywords,
