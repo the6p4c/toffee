@@ -1,3 +1,4 @@
+mod desktop_entry;
 mod get;
 
 use clap::Parser;
@@ -29,12 +30,15 @@ impl<So: Into<String>> From<So> for CliError {
 #[derive(Parser, Debug)]
 enum Args {
     /// Read a full desktop file, a specific group, or a specific key
-    Get(get::GetArgs),
+    Get(get::Args),
+    /// Read and dump a desktop entry file
+    DesktopEntry(desktop_entry::Args),
 }
 
 fn main() {
     let result = match Args::parse() {
         Args::Get(args) => get::main(args),
+        Args::DesktopEntry(args) => desktop_entry::main(args),
     };
 
     match result {

@@ -1,4 +1,140 @@
-use crate::FromValue;
+use std::fmt;
+
+use crate::{DesktopFile, FromValue, Group, ParseError};
+
+#[derive(Debug)]
+pub enum DesktopEntryError {
+    Parse(ParseError),
+    DesktopEntryGroupMissing,
+    RequiredKeyMissing(&'static str),
+}
+
+impl fmt::Display for DesktopEntryError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Parse(err) => write!(f, "parse: {err}"),
+            Self::DesktopEntryGroupMissing => {
+                write!(f, "[Desktop Entry] group not found")
+            }
+            Self::RequiredKeyMissing(key) => {
+                write!(f, "required key \"{key}\"")
+            }
+        }
+    }
+}
+
+impl From<ParseError> for DesktopEntryError {
+    fn from(err: ParseError) -> Self {
+        DesktopEntryError::Parse(err)
+    }
+}
+
+fn get_required<V: FromValue>(group: &Group, key: &'static str) -> Result<V, DesktopEntryError> {
+    let value = group
+        .get_value::<V>(key)
+        .ok_or(DesktopEntryError::RequiredKeyMissing(key))??;
+    Ok(value)
+}
+
+fn get_optional<V: FromValue>(group: &Group, key: &str) -> Result<Option<V>, DesktopEntryError> {
+    let value = group.get_value::<V>(key).transpose()?;
+    Ok(value)
+}
+
+#[derive(Debug, Clone)]
+pub struct DesktopEntryCommon {
+    pub version: Option<String>,
+    pub name: String,
+    pub generic_name: Option<String>,
+    pub no_display: Option<bool>,
+    pub comment: Option<String>,
+    pub icon: Option<String>,
+    pub hidden: Option<bool>,
+    pub only_show_in: Option<Vec<String>>,
+    pub not_show_in: Option<Vec<String>>,
+}
+
+impl DesktopEntryCommon {
+    fn try_from_group(group: &Group) -> Result<Self, DesktopEntryError> {
+        Ok(Self {
+            version: get_optional(group, "Version")?,
+            name: get_required(group, "Name")?,
+            generic_name: get_optional(group, "GenericName")?,
+            no_display: get_optional(group, "NoDisplay")?,
+            comment: get_optional(group, "Comment")?,
+            icon: get_optional(group, "Icon")?,
+            hidden: get_optional(group, "Hidden")?,
+            only_show_in: get_optional(group, "OnlyShowIn")?,
+            not_show_in: get_optional(group, "NotShowIn")?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum DesktopEntryType {
+    Unknown,
+    Application {
+        try_exec: Option<String>,
+        exec: Option<Exec>,
+        path: Option<String>,
+        terminal: Option<bool>,
+        actions: Option<Vec<String>>,
+        mime_type: Option<Vec<String>>,
+        categories: Option<Vec<String>>,
+        keywords: Option<Vec<String>>,
+        startup_notify: Option<bool>,
+        startup_wm_class: Option<String>,
+        prefers_non_default_gpu: Option<bool>,
+        single_main_window: Option<bool>,
+    },
+}
+
+impl DesktopEntryType {
+    fn try_from_group(ty: &str, group: &Group) -> Result<Self, DesktopEntryError> {
+        match ty {
+            "Application" => Ok(Self::Application {
+                try_exec: get_optional(group, "TryExec")?,
+                exec: get_optional(group, "Exec")?,
+                path: get_optional(group, "Path")?,
+                terminal: get_optional(group, "Terminal")?,
+                actions: get_optional(group, "Actions")?,
+                mime_type: get_optional(group, "MimeType")?,
+                categories: get_optional(group, "Categories")?,
+                keywords: get_optional(group, "Keywords")?,
+                startup_notify: get_optional(group, "StartupNotify")?,
+                startup_wm_class: get_optional(group, "StartupWMClass")?,
+                prefers_non_default_gpu: get_optional(group, "PrefersNonDefaultGPU")?,
+                single_main_window: get_optional(group, "SingleMainWindow")?,
+            }),
+            _ => Ok(Self::Unknown),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DesktopEntry<'file, 'input> {
+    pub group: &'file Group<'input>,
+    pub common: DesktopEntryCommon,
+    pub for_type: DesktopEntryType,
+}
+
+impl<'file: 'input, 'input> DesktopEntry<'file, 'input> {
+    pub fn try_from_file(file: &'file DesktopFile<'input>) -> Result<Self, DesktopEntryError> {
+        let group = file
+            .group("Desktop Entry")
+            .ok_or(DesktopEntryError::DesktopEntryGroupMissing)?;
+
+        let ty: String = get_required(group, "Type")?;
+        let common = DesktopEntryCommon::try_from_group(group)?;
+        let for_type = DesktopEntryType::try_from_group(&ty, group)?;
+
+        Ok(Self {
+            group,
+            common,
+            for_type,
+        })
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecArgument {

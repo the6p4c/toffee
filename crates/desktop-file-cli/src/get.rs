@@ -19,7 +19,7 @@ enum ValueType {
 }
 
 #[derive(clap::Args, Debug)]
-pub struct GetArgs {
+pub struct Args {
     /// Path to a desktop file to read
     path: std::path::PathBuf,
     /// Group name to retrieve
@@ -201,7 +201,7 @@ fn print_value(
     Ok(())
 }
 
-pub fn main(args: GetArgs) -> Result<(), CliError> {
+pub fn main(args: Args) -> Result<(), CliError> {
     let contents = fs::read_to_string(args.path)
         .map_err(|err| CliError::new("could not read .desktop file", err.to_string()))?;
     let file = DesktopFile::parse(&contents)
