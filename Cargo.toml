@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace]
-members = ["crates/desktop-file"]
+members = ["crates/desktop-file", "crates/desktop-file-cli"]
 
 [dependencies]
 eframe = "0.22.0"
