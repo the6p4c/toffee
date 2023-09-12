@@ -1,3 +1,39 @@
+//! Provides a simple way to define a standardized group in a desktop file with both required and
+//! optional keys.
+//!
+//! # Example
+//! ```
+//! use desktop_file::define_group::preamble::*;
+//! use desktop_file::ParseError;
+//!
+//! define_group! {
+//!     #[derive(Debug)]
+//!     #[error(MyError)]
+//!     pub struct MyGroup {
+//!         pub first_key: Required<String>,
+//!         pub second_key: Option<Vec<String>>,
+//!         #[key("Is-Fancy")]
+//!         pub fancy: Option<bool>,
+//!     }
+//! }
+//!
+//! enum MyError {
+//!     Parse(ParseError),
+//!     RequiredKeyMissing(&'static str),
+//! }
+//!
+//! impl From<ParseError> for MyError {
+//!     fn from(value: ParseError) -> Self {
+//!         Self::Parse(value)
+//!     }
+//! }
+//!
+//! impl From<RequiredKeyMissing> for MyError {
+//!     fn from(value: RequiredKeyMissing) -> Self {
+//!         Self::RequiredKeyMissing(value.0)
+//!     }
+//! }
+//! ```
 use std::marker::PhantomData;
 
 use crate::{FromRaw, Group, ParseError};
@@ -89,15 +125,15 @@ macro_rules! define_group {
     } => {
         $(#[$meta])?
         $vis struct $name {
-            $(pub $field_name: <$field_type as crate::define_group::GroupValue<$E>>::Value),*
+            $(pub $field_name: <$field_type as $crate::define_group::GroupValue<$E>>::Value),*
         }
 
         impl $name {
-            fn try_from_group(group: &Group) -> Result<Self, DesktopEntryError> {
+            fn try_from_group(group: &$crate::Group) -> Result<Self, $E> {
                 use const_format::{map_ascii_case, Case};
 
-                use crate::define_group::GroupValue;
-                use crate::define_group_key;
+                use $crate::define_group::GroupValue;
+                use $crate::define_group_key;
 
                 Ok(Self {
                     $(
