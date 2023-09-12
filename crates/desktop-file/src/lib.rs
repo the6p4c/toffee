@@ -61,59 +61,38 @@ pub mod parser;
 mod parser_util;
 
 use std::collections::HashMap;
-use std::fmt;
+use thiserror::Error;
 
 use parser::{file_parser, value_parser, Line};
 
-#[derive(Debug, PartialEq)]
-pub struct ParseError {
-    inner: peg::error::ParseError<peg::str::LineCol>,
-}
+type PegParseError = peg::error::ParseError<peg::str::LineCol>;
 
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.inner)
-    }
-}
+#[derive(Error, Debug, PartialEq)]
+#[error(transparent)]
+pub struct ParseError(#[from] PegParseError);
 
-impl From<peg::error::ParseError<peg::str::LineCol>> for ParseError {
-    fn from(inner: peg::error::ParseError<peg::str::LineCol>) -> Self {
-        ParseError { inner }
-    }
-}
-
-#[derive(Debug, PartialEq)]
+#[derive(Error, Debug, PartialEq)]
 pub enum DesktopFileError<'input> {
-    Parse(ParseError),
+    #[error("parsing should succeed")]
+    Parse(#[from] ParseError),
+    #[error("entries must be preceeded by a group header (found key {0} outside group)")]
     EntryOutsideOfGroup(&'input str),
+    #[error("a group must appear in one group header only (found duplicate group [{0}])")]
     DuplicateGroup(&'input str),
+    #[error("keys within a group must be unique (found duplicate key {0})")]
     DuplicateKey(&'input str),
 }
 
-impl fmt::Display for DesktopFileError<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Parse(err) => write!(f, "parse: {err}"),
-            Self::EntryOutsideOfGroup(key) => {
-                write!(f, "key outside of group (key \"{key}\")")
-            }
-            Self::DuplicateGroup(group_name) => {
-                write!(f, "duplicate group (group name \"{group_name}\")")
-            }
-            Self::DuplicateKey(key) => write!(f, "duplicate key (key \"{key}\")"),
-        }
-    }
-}
-
-impl From<peg::error::ParseError<peg::str::LineCol>> for DesktopFileError<'_> {
-    fn from(inner: peg::error::ParseError<peg::str::LineCol>) -> Self {
-        DesktopFileError::Parse(inner.into())
+/// Required to turn a [PegParseError] and into a [DesktopFileError] with `?`.
+impl From<PegParseError> for DesktopFileError<'_> {
+    fn from(value: PegParseError) -> Self {
+        Self::from(ParseError::from(value))
     }
 }
 
 #[derive(Debug)]
 pub struct DesktopFile<'input> {
-    pub(self) groups: HashMap<&'input str, Group<'input>>,
+    groups: HashMap<&'input str, Group<'input>>,
 }
 
 impl<'input> DesktopFile<'input> {
@@ -135,7 +114,9 @@ impl<'input> DesktopFile<'input> {
                     let group_name =
                         current_group_name.ok_or(DesktopFileError::EntryOutsideOfGroup(key))?;
 
-                    let group = groups.get_mut(group_name).expect("current group to exist");
+                    let group = groups
+                        .get_mut(group_name)
+                        .expect("current group should exist");
                     if group.entries.insert(key, value).is_some() {
                         return Err(DesktopFileError::DuplicateKey(key));
                     }
@@ -159,7 +140,7 @@ impl<'input> DesktopFile<'input> {
 
 #[derive(Debug)]
 pub struct Group<'input> {
-    pub(self) entries: HashMap<&'input str, &'input str>,
+    entries: HashMap<&'input str, &'input str>,
 }
 
 impl Group<'_> {
@@ -169,10 +150,10 @@ impl Group<'_> {
         }
     }
 
-    pub fn get<'a>(&self, key: impl Into<Key<'a>>) -> Option<&str> {
+    pub fn get_raw<'a>(&self, key: impl Into<Key<'a>>) -> Option<&str> {
         let entry = match key.into() {
             Key::String(key) => self.entries.get(key),
-            Key::Locale(locale_key) => locale_key
+            Key::Localized(locale_key) => locale_key
                 .matches()
                 .into_iter()
                 .flat_map(|key| self.entries.get(key.as_str()))
@@ -182,11 +163,8 @@ impl Group<'_> {
         entry.copied()
     }
 
-    pub fn get_value<'a, V: FromValue>(
-        &self,
-        key: impl Into<Key<'a>>,
-    ) -> Option<Result<V, ParseError>> {
-        self.get(key).map(|value| V::from_value(value))
+    pub fn get<'a, V: FromRaw>(&self, key: impl Into<Key<'a>>) -> Option<Result<V, ParseError>> {
+        self.get_raw(key).map(|value| V::from_raw(value))
     }
 
     pub fn entries(&self) -> impl Iterator<Item = (&str, &str)> {
@@ -196,18 +174,18 @@ impl Group<'_> {
 
 pub enum Key<'a> {
     String(&'a str),
-    Locale(LocaleKey<'a>),
+    Localized(LocalizedKey<'a>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LocaleKey<'a> {
+pub struct LocalizedKey<'a> {
     pub key: &'a str,
     pub lang: &'a str,
     pub country: Option<&'a str>,
     pub modifier: Option<&'a str>,
 }
 
-impl LocaleKey<'_> {
+impl LocalizedKey<'_> {
     fn matches(&self) -> Vec<String> {
         let (key, lang) = (self.key, self.lang);
         let mut matches = Vec::with_capacity(5);
@@ -243,30 +221,33 @@ impl<'a> From<&'a str> for Key<'a> {
     }
 }
 
-impl<'a> From<LocaleKey<'a>> for Key<'a> {
-    fn from(value: LocaleKey<'a>) -> Self {
-        Self::Locale(value)
+impl<'a> From<LocalizedKey<'a>> for Key<'a> {
+    fn from(value: LocalizedKey<'a>) -> Self {
+        Self::Localized(value)
     }
 }
 
-pub trait FromValue: Sized {
-    fn from_value(value: &str) -> Result<Self, ParseError>;
+pub trait FromRaw: Sized {
+    fn from_raw(raw: &str) -> Result<Self, ParseError>;
 }
 
-impl FromValue for String {
-    fn from_value(value: &str) -> Result<Self, ParseError> {
+/// Parses values of types `string`, `localestring` and `iconstring`.
+impl FromRaw for String {
+    fn from_raw(value: &str) -> Result<Self, ParseError> {
         Ok(value_parser::string(value)?)
     }
 }
 
-impl FromValue for Vec<String> {
-    fn from_value(value: &str) -> Result<Self, ParseError> {
+/// Parses values of types `strings`, `localestrings` and `iconstrings`.
+impl FromRaw for Vec<String> {
+    fn from_raw(value: &str) -> Result<Self, ParseError> {
         Ok(value_parser::strings(value)?)
     }
 }
 
-impl FromValue for bool {
-    fn from_value(value: &str) -> Result<Self, ParseError> {
+/// Parses values of type `boolean`.
+impl FromRaw for bool {
+    fn from_raw(value: &str) -> Result<Self, ParseError> {
         Ok(value_parser::boolean(value)?)
     }
 }
@@ -275,7 +256,7 @@ impl FromValue for bool {
 mod tests {
     use indoc::indoc;
 
-    use super::{DesktopFile, DesktopFileError, LocaleKey};
+    use super::{DesktopFile, DesktopFileError, LocalizedKey};
 
     #[test]
     fn desktop_file_empty() {
@@ -295,13 +276,13 @@ mod tests {
         .unwrap();
 
         // simple getters
-        assert_eq!(file.group("group1").unwrap().get("k1").unwrap(), "v1");
-        assert_eq!(file.group("group1").unwrap().get("k2").unwrap(), "v2");
-        assert!(file.group("group1").unwrap().get("k3").is_none());
+        assert_eq!(file.group("group1").unwrap().get_raw("k1").unwrap(), "v1");
+        assert_eq!(file.group("group1").unwrap().get_raw("k2").unwrap(), "v2");
+        assert!(file.group("group1").unwrap().get_raw("k3").is_none());
 
-        assert!(file.group("group2").unwrap().get("k1").is_none());
-        assert!(file.group("group2").unwrap().get("k2").is_none());
-        assert_eq!(file.group("group2").unwrap().get("k3").unwrap(), "v3");
+        assert!(file.group("group2").unwrap().get_raw("k1").is_none());
+        assert!(file.group("group2").unwrap().get_raw("k2").is_none());
+        assert_eq!(file.group("group2").unwrap().get_raw("k3").unwrap(), "v3");
 
         assert!(file.group("group3").is_none());
     }
@@ -320,7 +301,7 @@ mod tests {
         let group = file.group("group").unwrap();
         assert_eq!(
             group
-                .get(LocaleKey {
+                .get_raw(LocalizedKey {
                     key: "Name",
                     lang: "sr",
                     country: Some("YU"),
@@ -331,7 +312,7 @@ mod tests {
         );
         assert_eq!(
             group
-                .get(LocaleKey {
+                .get_raw(LocalizedKey {
                     key: "Name",
                     lang: "sr",
                     country: Some("YU"),
@@ -342,7 +323,7 @@ mod tests {
         );
         assert_eq!(
             group
-                .get(LocaleKey {
+                .get_raw(LocalizedKey {
                     key: "Name",
                     lang: "sr",
                     country: None,
@@ -353,7 +334,7 @@ mod tests {
         );
         assert_eq!(
             group
-                .get(LocaleKey {
+                .get_raw(LocalizedKey {
                     key: "Name",
                     lang: "sr",
                     country: None,
@@ -364,7 +345,7 @@ mod tests {
         );
         assert_eq!(
             group
-                .get(LocaleKey {
+                .get_raw(LocalizedKey {
                     key: "Name",
                     lang: "de",
                     country: None,
@@ -421,9 +402,9 @@ mod tests {
     }
 
     #[test]
-    fn locale_key_matches() {
+    fn localized_key_matches() {
         // lang_COUNTRY@MODIFIER
-        let locale_key = LocaleKey {
+        let locale_key = LocalizedKey {
             key: "key",
             lang: "de",
             country: Some("AT"),
@@ -441,7 +422,7 @@ mod tests {
         );
 
         // lang_COUNTRY
-        let locale_key = LocaleKey {
+        let locale_key = LocalizedKey {
             key: "key",
             lang: "de",
             country: Some("AT"),
@@ -450,7 +431,7 @@ mod tests {
         assert_eq!(locale_key.matches(), vec!["key[de_AT]", "key[de]", "key",]);
 
         // lang@MODIFIER
-        let locale_key = LocaleKey {
+        let locale_key = LocalizedKey {
             key: "key",
             lang: "de",
             country: None,
@@ -462,7 +443,7 @@ mod tests {
         );
 
         // lang
-        let locale_key = LocaleKey {
+        let locale_key = LocalizedKey {
             key: "key",
             lang: "de",
             country: None,

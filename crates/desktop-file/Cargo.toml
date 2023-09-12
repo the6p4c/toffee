@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 peg = "0.8.1"
+thiserror = "1.0.48"
 
 [dev-dependencies]
 indoc = "2.0.3"

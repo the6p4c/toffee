@@ -1,49 +1,32 @@
-use std::fmt;
+use thiserror::Error;
 
-use crate::{DesktopFile, FromValue, Group, ParseError};
+use crate::{DesktopFile, FromRaw, Group, ParseError};
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum DesktopEntryError {
-    Parse(ParseError),
+    #[error("parsing should succeed")]
+    Parse(#[from] ParseError),
+    #[error("desktop entry files must contain the [Desktop Entry] group")]
     DesktopEntryGroupMissing,
+    #[error("desktop entry files require the {0} key to be present")]
     RequiredKeyMissing(&'static str),
 }
 
-impl fmt::Display for DesktopEntryError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Parse(err) => write!(f, "parse: {err}"),
-            Self::DesktopEntryGroupMissing => {
-                write!(f, "[Desktop Entry] group not found")
-            }
-            Self::RequiredKeyMissing(key) => {
-                write!(f, "required key \"{key}\" missing")
-            }
-        }
-    }
-}
-
-impl From<ParseError> for DesktopEntryError {
-    fn from(err: ParseError) -> Self {
-        DesktopEntryError::Parse(err)
-    }
-}
-
 trait GroupExt {
-    fn get_required_value<V: FromValue>(&self, key: &'static str) -> Result<V, DesktopEntryError>;
-    fn get_optional_value<V: FromValue>(&self, key: &str) -> Result<Option<V>, DesktopEntryError>;
+    fn get_required<V: FromRaw>(&self, key: &'static str) -> Result<V, DesktopEntryError>;
+    fn get_optional<V: FromRaw>(&self, key: &str) -> Result<Option<V>, DesktopEntryError>;
 }
 
 impl GroupExt for Group<'_> {
-    fn get_required_value<V: FromValue>(&self, key: &'static str) -> Result<V, DesktopEntryError> {
+    fn get_required<V: FromRaw>(&self, key: &'static str) -> Result<V, DesktopEntryError> {
         let value = self
-            .get_value::<V>(key)
+            .get::<V>(key)
             .ok_or(DesktopEntryError::RequiredKeyMissing(key))??;
         Ok(value)
     }
 
-    fn get_optional_value<V: FromValue>(&self, key: &str) -> Result<Option<V>, DesktopEntryError> {
-        let value = self.get_value::<V>(key).transpose()?;
+    fn get_optional<V: FromRaw>(&self, key: &str) -> Result<Option<V>, DesktopEntryError> {
+        let value = self.get::<V>(key).transpose()?;
         Ok(value)
     }
 }
@@ -64,15 +47,15 @@ pub struct DesktopEntryCommon {
 impl DesktopEntryCommon {
     fn try_from_group(group: &Group) -> Result<Self, DesktopEntryError> {
         Ok(Self {
-            version: group.get_optional_value("Version")?,
-            name: group.get_required_value("Name")?,
-            generic_name: group.get_optional_value("GenericName")?,
-            no_display: group.get_optional_value("NoDisplay")?,
-            comment: group.get_optional_value("Comment")?,
-            icon: group.get_optional_value("Icon")?,
-            hidden: group.get_optional_value("Hidden")?,
-            only_show_in: group.get_optional_value("OnlyShowIn")?,
-            not_show_in: group.get_optional_value("NotShowIn")?,
+            version: group.get_optional("Version")?,
+            name: group.get_required("Name")?,
+            generic_name: group.get_optional("GenericName")?,
+            no_display: group.get_optional("NoDisplay")?,
+            comment: group.get_optional("Comment")?,
+            icon: group.get_optional("Icon")?,
+            hidden: group.get_optional("Hidden")?,
+            only_show_in: group.get_optional("OnlyShowIn")?,
+            not_show_in: group.get_optional("NotShowIn")?,
         })
     }
 }
@@ -96,18 +79,18 @@ pub struct DesktopEntryApplication {
 impl DesktopEntryApplication {
     fn try_from_group(group: &Group) -> Result<Self, DesktopEntryError> {
         Ok(Self {
-            try_exec: group.get_optional_value("TryExec")?,
-            exec: group.get_optional_value("Exec")?,
-            path: group.get_optional_value("Path")?,
-            terminal: group.get_optional_value("Terminal")?,
-            actions: group.get_optional_value("Actions")?,
-            mime_type: group.get_optional_value("MimeType")?,
-            categories: group.get_optional_value("Categories")?,
-            keywords: group.get_optional_value("Keywords")?,
-            startup_notify: group.get_optional_value("StartupNotify")?,
-            startup_wm_class: group.get_optional_value("StartupWMClass")?,
-            prefers_non_default_gpu: group.get_optional_value("PrefersNonDefaultGPU")?,
-            single_main_window: group.get_optional_value("SingleMainWindow")?,
+            try_exec: group.get_optional("TryExec")?,
+            exec: group.get_optional("Exec")?,
+            path: group.get_optional("Path")?,
+            terminal: group.get_optional("Terminal")?,
+            actions: group.get_optional("Actions")?,
+            mime_type: group.get_optional("MimeType")?,
+            categories: group.get_optional("Categories")?,
+            keywords: group.get_optional("Keywords")?,
+            startup_notify: group.get_optional("StartupNotify")?,
+            startup_wm_class: group.get_optional("StartupWMClass")?,
+            prefers_non_default_gpu: group.get_optional("PrefersNonDefaultGPU")?,
+            single_main_window: group.get_optional("SingleMainWindow")?,
         })
     }
 }
@@ -142,7 +125,7 @@ impl<'file: 'input, 'input> DesktopEntry<'file, 'input> {
             .group("Desktop Entry")
             .ok_or(DesktopEntryError::DesktopEntryGroupMissing)?;
 
-        let ty: String = group.get_required_value("Type")?;
+        let ty: String = group.get_required("Type")?;
         let common = DesktopEntryCommon::try_from_group(group)?;
         let for_type = DesktopEntryType::try_from_group(&ty, group)?;
 
@@ -203,9 +186,9 @@ peg::parser! {
     }
 }
 
-impl FromValue for Exec {
-    fn from_value(value: &str) -> Result<Self, crate::ParseError> {
-        let value = String::from_value(value)?;
+impl FromRaw for Exec {
+    fn from_raw(value: &str) -> Result<Self, crate::ParseError> {
+        let value = String::from_raw(value)?;
         let (program, arguments) = exec_parser::exec(&value)?;
 
         Ok(Exec { program, arguments })
@@ -219,7 +202,7 @@ mod tests {
     #[test]
     fn sdrpp() {
         assert_eq!(
-            Exec::from_value("/usr/bin/sdrpp").unwrap(),
+            Exec::from_raw("/usr/bin/sdrpp").unwrap(),
             Exec {
                 program: "/usr/bin/sdrpp".to_string(),
                 arguments: vec![],
@@ -230,7 +213,7 @@ mod tests {
     #[test]
     fn ipython() {
         assert_eq!(
-            Exec::from_value("kitty python -m IPython").unwrap(),
+            Exec::from_raw("kitty python -m IPython").unwrap(),
             Exec {
                 program: "kitty".to_string(),
                 arguments: vec![
@@ -245,7 +228,7 @@ mod tests {
     #[test]
     fn audacity() {
         assert_eq!(
-            Exec::from_value("env UBUNTU_MENUPROXY=0 audacity %F").unwrap(),
+            Exec::from_raw("env UBUNTU_MENUPROXY=0 audacity %F").unwrap(),
             Exec {
                 program: "env".to_string(),
                 arguments: vec![
@@ -260,7 +243,7 @@ mod tests {
     #[test]
     fn kate() {
         assert_eq!(
-            Exec::from_value("kate -b %U").unwrap(),
+            Exec::from_raw("kate -b %U").unwrap(),
             Exec {
                 program: "kate".to_string(),
                 arguments: vec![
@@ -274,7 +257,7 @@ mod tests {
     #[test]
     fn love() {
         assert_eq!(
-            Exec::from_value("/usr/bin/love %f").unwrap(),
+            Exec::from_raw("/usr/bin/love %f").unwrap(),
             Exec {
                 program: "/usr/bin/love".to_string(),
                 arguments: vec![ExecArgument::FieldCode('f')],
@@ -285,7 +268,7 @@ mod tests {
     #[test]
     fn openstreetmap_geo_handler() {
         assert_eq!(
-            Exec::from_value(
+            Exec::from_raw(
                 r#"kde-geo-uri-handler --coordinate-template "https://www.openstreetmap.org/#map=<Z>/<LAT>/<LON>" --query-template "https://www.openstreetmap.org/search?query=<Q>" --fallback "https://www.openstreetmap.org" %u"#
             ).unwrap(),
             Exec {
@@ -310,7 +293,7 @@ mod tests {
     #[test]
     fn emacsclient_mail() {
         assert_eq!(
-            Exec::from_value(
+            Exec::from_raw(
                 r#"sh -c "u=\\$(echo \\"\\$1\\" | sed 's/[\\\\\\"]/\\\\\\\\&/g'); exec /usr/bin/emacsclient --alternate-editor= --display=\\"\\$DISPLAY\\" --eval \\"(message-mailto \\\\\\"\\$u\\\\\\")\\"" sh %u"#
             ).unwrap(),
             Exec {
@@ -330,7 +313,7 @@ mod tests {
     #[test]
     fn lone_percent() {
         assert_eq!(
-            Exec::from_value("program x %% y").unwrap(),
+            Exec::from_raw("program x %% y").unwrap(),
             Exec {
                 program: "program".to_string(),
                 arguments: vec![

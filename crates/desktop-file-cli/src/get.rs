@@ -2,7 +2,7 @@ use clap::ValueEnum;
 use std::{fs, string};
 
 use crate::CliError;
-use desktop_file::{desktop_entry, DesktopFile, FromValue, Group};
+use desktop_file::{desktop_entry, DesktopFile, FromRaw, Group};
 
 #[derive(ValueEnum, Debug, Clone, Copy)]
 #[value(rename_all = "PascalCase")]
@@ -57,7 +57,7 @@ fn print_value(
             key: &str,
         ) -> Result<(String, Option<String>), CliError> {
             let value = group
-                .get(key.as_ref())
+                .get_raw(key.as_ref())
                 .ok_or_else(|| format!("could not find [{group_name}].{key}"))?;
 
             Self::to_string_from_str(value)
@@ -67,7 +67,7 @@ fn print_value(
     }
 
     trait ToStringFromValue {
-        type Value: FromValue;
+        type Value: FromRaw;
 
         fn to_string(
             group_name: &str,
@@ -75,7 +75,7 @@ fn print_value(
             key: &str,
         ) -> Result<(String, Option<String>), CliError> {
             let value = group
-                .get_value(key.as_ref())
+                .get(key.as_ref())
                 .ok_or_else(|| format!("could not find [{group_name}].{key}"))?
                 .map_err(|err| {
                     CliError::new(
