@@ -62,7 +62,6 @@ impl GroupExt for Group<'_> {
         &self,
         key: &'static str,
     ) -> Result<Option<V>, E> {
-        eprintln!("get_optional({key})");
         let value = self.get::<V>(key).transpose()?;
         Ok(value)
     }
@@ -71,7 +70,6 @@ impl GroupExt for Group<'_> {
         &self,
         key: &'static str,
     ) -> Result<V, E> {
-        eprintln!("get_required({key})");
         let value = self.get::<V>(key).ok_or(RequiredKeyMissing(key))??;
         Ok(value)
     }
