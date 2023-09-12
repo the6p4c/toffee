@@ -17,7 +17,7 @@ impl fmt::Display for DesktopEntryError {
                 write!(f, "[Desktop Entry] group not found")
             }
             Self::RequiredKeyMissing(key) => {
-                write!(f, "required key \"{key}\"")
+                write!(f, "required key \"{key}\" missing")
             }
         }
     }
@@ -29,16 +29,23 @@ impl From<ParseError> for DesktopEntryError {
     }
 }
 
-fn get_required<V: FromValue>(group: &Group, key: &'static str) -> Result<V, DesktopEntryError> {
-    let value = group
-        .get_value::<V>(key)
-        .ok_or(DesktopEntryError::RequiredKeyMissing(key))??;
-    Ok(value)
+trait GroupExt {
+    fn get_required_value<V: FromValue>(&self, key: &'static str) -> Result<V, DesktopEntryError>;
+    fn get_optional_value<V: FromValue>(&self, key: &str) -> Result<Option<V>, DesktopEntryError>;
 }
 
-fn get_optional<V: FromValue>(group: &Group, key: &str) -> Result<Option<V>, DesktopEntryError> {
-    let value = group.get_value::<V>(key).transpose()?;
-    Ok(value)
+impl GroupExt for Group<'_> {
+    fn get_required_value<V: FromValue>(&self, key: &'static str) -> Result<V, DesktopEntryError> {
+        let value = self
+            .get_value::<V>(key)
+            .ok_or(DesktopEntryError::RequiredKeyMissing(key))??;
+        Ok(value)
+    }
+
+    fn get_optional_value<V: FromValue>(&self, key: &str) -> Result<Option<V>, DesktopEntryError> {
+        let value = self.get_value::<V>(key).transpose()?;
+        Ok(value)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -57,15 +64,50 @@ pub struct DesktopEntryCommon {
 impl DesktopEntryCommon {
     fn try_from_group(group: &Group) -> Result<Self, DesktopEntryError> {
         Ok(Self {
-            version: get_optional(group, "Version")?,
-            name: get_required(group, "Name")?,
-            generic_name: get_optional(group, "GenericName")?,
-            no_display: get_optional(group, "NoDisplay")?,
-            comment: get_optional(group, "Comment")?,
-            icon: get_optional(group, "Icon")?,
-            hidden: get_optional(group, "Hidden")?,
-            only_show_in: get_optional(group, "OnlyShowIn")?,
-            not_show_in: get_optional(group, "NotShowIn")?,
+            version: group.get_optional_value("Version")?,
+            name: group.get_required_value("Name")?,
+            generic_name: group.get_optional_value("GenericName")?,
+            no_display: group.get_optional_value("NoDisplay")?,
+            comment: group.get_optional_value("Comment")?,
+            icon: group.get_optional_value("Icon")?,
+            hidden: group.get_optional_value("Hidden")?,
+            only_show_in: group.get_optional_value("OnlyShowIn")?,
+            not_show_in: group.get_optional_value("NotShowIn")?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DesktopEntryApplication {
+    pub try_exec: Option<String>,
+    pub exec: Option<Exec>,
+    pub path: Option<String>,
+    pub terminal: Option<bool>,
+    pub actions: Option<Vec<String>>,
+    pub mime_type: Option<Vec<String>>,
+    pub categories: Option<Vec<String>>,
+    pub keywords: Option<Vec<String>>,
+    pub startup_notify: Option<bool>,
+    pub startup_wm_class: Option<String>,
+    pub prefers_non_default_gpu: Option<bool>,
+    pub single_main_window: Option<bool>,
+}
+
+impl DesktopEntryApplication {
+    fn try_from_group(group: &Group) -> Result<Self, DesktopEntryError> {
+        Ok(Self {
+            try_exec: group.get_optional_value("TryExec")?,
+            exec: group.get_optional_value("Exec")?,
+            path: group.get_optional_value("Path")?,
+            terminal: group.get_optional_value("Terminal")?,
+            actions: group.get_optional_value("Actions")?,
+            mime_type: group.get_optional_value("MimeType")?,
+            categories: group.get_optional_value("Categories")?,
+            keywords: group.get_optional_value("Keywords")?,
+            startup_notify: group.get_optional_value("StartupNotify")?,
+            startup_wm_class: group.get_optional_value("StartupWMClass")?,
+            prefers_non_default_gpu: group.get_optional_value("PrefersNonDefaultGPU")?,
+            single_main_window: group.get_optional_value("SingleMainWindow")?,
         })
     }
 }
@@ -73,39 +115,15 @@ impl DesktopEntryCommon {
 #[derive(Debug, Clone)]
 pub enum DesktopEntryType {
     Unknown,
-    Application {
-        try_exec: Option<String>,
-        exec: Option<Exec>,
-        path: Option<String>,
-        terminal: Option<bool>,
-        actions: Option<Vec<String>>,
-        mime_type: Option<Vec<String>>,
-        categories: Option<Vec<String>>,
-        keywords: Option<Vec<String>>,
-        startup_notify: Option<bool>,
-        startup_wm_class: Option<String>,
-        prefers_non_default_gpu: Option<bool>,
-        single_main_window: Option<bool>,
-    },
+    Application(DesktopEntryApplication),
 }
 
 impl DesktopEntryType {
     fn try_from_group(ty: &str, group: &Group) -> Result<Self, DesktopEntryError> {
         match ty {
-            "Application" => Ok(Self::Application {
-                try_exec: get_optional(group, "TryExec")?,
-                exec: get_optional(group, "Exec")?,
-                path: get_optional(group, "Path")?,
-                terminal: get_optional(group, "Terminal")?,
-                actions: get_optional(group, "Actions")?,
-                mime_type: get_optional(group, "MimeType")?,
-                categories: get_optional(group, "Categories")?,
-                keywords: get_optional(group, "Keywords")?,
-                startup_notify: get_optional(group, "StartupNotify")?,
-                startup_wm_class: get_optional(group, "StartupWMClass")?,
-                prefers_non_default_gpu: get_optional(group, "PrefersNonDefaultGPU")?,
-                single_main_window: get_optional(group, "SingleMainWindow")?,
-            }),
+            "Application" => Ok(Self::Application(DesktopEntryApplication::try_from_group(
+                group,
+            )?)),
             _ => Ok(Self::Unknown),
         }
     }
@@ -124,7 +142,7 @@ impl<'file: 'input, 'input> DesktopEntry<'file, 'input> {
             .group("Desktop Entry")
             .ok_or(DesktopEntryError::DesktopEntryGroupMissing)?;
 
-        let ty: String = get_required(group, "Type")?;
+        let ty: String = group.get_required_value("Type")?;
         let common = DesktopEntryCommon::try_from_group(group)?;
         let for_type = DesktopEntryType::try_from_group(&ty, group)?;
 
