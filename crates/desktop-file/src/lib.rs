@@ -56,6 +56,7 @@
 //!     except for `[` and `]` and control characters." We permit all characters except for `[`
 //!     and `]`.
 
+pub mod define_group;
 pub mod desktop_entry;
 pub mod parser;
 mod parser_util;
