@@ -53,7 +53,7 @@ impl<M: for<'entry> Mode<'entry>> eframe::App for App<M> {
                 let toffee_data = ToffeeData {
                     mode: "drun",
                     counter: None,
-                    entries: self.mode.entries(""),
+                    entries: self.mode.entries(&self.input),
                 };
                 let toffee = Toffee::new("toffee", toffee_data, &mut self.input)
                     .show(ui, |ui, entry| self.mode.entry_contents(ui, entry));
