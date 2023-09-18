@@ -1,10 +1,16 @@
-use eframe::egui;
-
+mod config;
 mod modes;
 mod toffee;
 
-use modes::{DRun, Mode};
+use color_eyre::eyre::{eyre, Context};
+use color_eyre::Result;
+use eframe::egui;
+use modes::{DRun, Mode, NewMode};
+use serde::Deserialize;
+use std::{env, fs};
 use toffee::{Toffee, ToffeeData};
+
+use crate::config::{Config, ModeConfig};
 
 struct App<M: for<'entry> Mode<'entry>> {
     mode: M,
@@ -58,11 +64,7 @@ impl<M: for<'entry> Mode<'entry>> eframe::App for App<M> {
     }
 }
 
-fn main() {
-    env_logger::init();
-
-    let mode = DRun::new(());
-
+fn run<M: for<'entry> Mode<'entry> + 'static>(backend: M) -> Result<()> {
     let native_options = eframe::NativeOptions {
         initial_window_size: Some(egui::emath::Vec2::new(500.0, 200.0)),
         ..eframe::NativeOptions::default()
@@ -70,7 +72,40 @@ fn main() {
     eframe::run_native(
         "toffee",
         native_options,
-        Box::new(|cc| Box::new(App::new(cc, mode))),
+        Box::new(|cc| Box::new(App::new(cc, backend))),
     )
-    .expect("app run failed");
+    .map_err(|_| eyre!("app run failed"))?;
+
+    Ok(())
+}
+
+fn main() -> Result<()> {
+    color_eyre::install()?;
+    env_logger::init();
+
+    let mut args = env::args();
+    args.next();
+    let selected_mode = args.next().ok_or(eyre!("need a mode to run"))?;
+
+    let config = fs::read_to_string("config.toml").wrap_err("failed to read config file")?;
+    let config = Config::from_str(&config)?;
+
+    let modes = config.modes.ok_or(eyre!("no modes configured"))?;
+
+    let mode = modes
+        .get(&selected_mode)
+        .ok_or(eyre!("unknown mode {selected_mode}"))?;
+    let mode_common =
+        ModeConfig::deserialize(mode.clone()).wrap_err("invalid common mode config")?;
+
+    match mode_common.backend.as_str() {
+        "drun" => {
+            let config = <DRun as NewMode>::Config::deserialize(mode.clone())
+                .wrap_err("invalid drun config")?;
+            run(DRun::new(config))
+        }
+        _ => Err(eyre!("unknown backend {}", mode_common.backend)),
+    }?;
+
+    Ok(())
 }

@@ -2,11 +2,17 @@ use desktop_file::desktop_entry::{DesktopEntry, DesktopEntryType, Exec, ExecArgu
 use desktop_file::DesktopFile;
 use eframe::egui;
 use log::{info, trace, warn};
+use serde::Deserialize;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use crate::modes::Mode;
+use crate::modes::{Mode, NewMode};
+
+#[derive(Deserialize)]
+pub struct Config {
+    path: String,
+}
 
 pub struct Entry {
     name: String,
@@ -18,12 +24,11 @@ pub struct DRun {
     entries: Vec<Entry>,
 }
 
-impl<'entry> Mode<'entry> for DRun {
-    type Entry = &'entry Entry;
-    type Config = ();
+impl NewMode for DRun {
+    type Config = Config;
 
-    fn new(_config: ()) -> Self {
-        let entries = match Self::read_entries("applications/") {
+    fn new(config: Self::Config) -> Self {
+        let entries = match Self::read_entries(config.path) {
             Ok(entries) => entries,
             Err(err) => {
                 warn!("failed to read entries - {}", err);
@@ -33,6 +38,10 @@ impl<'entry> Mode<'entry> for DRun {
 
         Self { entries }
     }
+}
+
+impl<'entry> Mode<'entry> for DRun {
+    type Entry = &'entry Entry;
 
     fn entries(&'entry self, query: &str) -> Vec<Self::Entry> {
         self.entries
@@ -127,6 +136,11 @@ impl DRun {
             DesktopEntryType::Application(app) => app,
             _ => return Ok(None),
         };
+
+        // HACK: handle entries we can't run
+        if app.exec.is_none() {
+            return Ok(None);
+        }
 
         Ok(Some(Entry {
             name: common.name,
