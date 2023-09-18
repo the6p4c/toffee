@@ -7,9 +7,8 @@ use std::path::Path;
 use std::process::Command;
 
 use crate::modes::Mode;
-use crate::toffee::{Toffee, ToffeeData};
 
-struct Entry {
+pub struct Entry {
     name: String,
     keywords: Vec<String>,
     exec: Exec,
@@ -19,8 +18,11 @@ pub struct DRun {
     entries: Vec<Entry>,
 }
 
-impl DRun {
-    pub fn new() -> Self {
+impl<'entry> Mode<'entry> for DRun {
+    type Entry = &'entry Entry;
+    type Config = ();
+
+    fn new(_config: ()) -> Self {
         let entries = match Self::read_entries("applications/") {
             Ok(entries) => entries,
             Err(err) => {
@@ -32,6 +34,44 @@ impl DRun {
         Self { entries }
     }
 
+    fn entries(&'entry self, query: &str) -> Vec<Self::Entry> {
+        self.entries
+            .iter()
+            .filter(|entry| {
+                let query = &query.to_lowercase();
+
+                let name_match = entry.name.to_lowercase().contains(query);
+                let keyword_match = entry
+                    .keywords
+                    .iter()
+                    .any(|k| k.to_lowercase().contains(query));
+
+                name_match || keyword_match
+            })
+            .collect()
+    }
+
+    fn entry_contents(&self, ui: &mut egui::Ui, entry: Self::Entry) {
+        ui.label(&entry.name);
+    }
+
+    fn on_selected(&self, entry: Self::Entry) {
+        let Exec { program, arguments } = &entry.exec;
+        let arguments = arguments
+            .into_iter()
+            .flat_map(|argument| match argument {
+                ExecArgument::String(s) => Some(s.clone()),
+                ExecArgument::FieldCode(_) => None,
+            })
+            .collect::<Vec<String>>();
+
+        info!("launching {:?} with arguments {:?}", program, arguments);
+
+        Command::new(program).args(arguments).spawn().unwrap();
+    }
+}
+
+impl DRun {
     fn read_entries<P: AsRef<Path>>(path: P) -> Result<Vec<Entry>, String> {
         let path = path.as_ref();
 
@@ -93,52 +133,5 @@ impl DRun {
             keywords: app.keywords.unwrap_or_else(|| vec![]),
             exec: app.exec.unwrap(),
         }))
-    }
-}
-
-impl Mode for DRun {
-    fn update(&mut self, ui: &mut egui::Ui, input: &mut String) {
-        let filtered_entries: Vec<_> = self
-            .entries
-            .iter()
-            .filter(|entry| {
-                let input = &input.to_lowercase();
-
-                let name_match = entry.name.to_lowercase().contains(input);
-                let keyword_match = entry
-                    .keywords
-                    .iter()
-                    .any(|k| k.to_lowercase().contains(input));
-
-                name_match || keyword_match
-            })
-            .collect();
-        let data = ToffeeData {
-            mode: "drun",
-            counter: Some((filtered_entries.len(), self.entries.len())),
-            entries: filtered_entries,
-        };
-
-        let toffee = Toffee::new("toffee", data, input).show(ui, |ui, entry| {
-            ui.label(&entry.name);
-        });
-
-        if toffee.input_changed() {
-            trace!("input changed: {}", input);
-        }
-        if let Some(entry) = toffee.selected_entry() {
-            let Exec { program, arguments } = &entry.exec;
-            let arguments = arguments
-                .into_iter()
-                .flat_map(|argument| match argument {
-                    ExecArgument::String(s) => Some(s.clone()),
-                    ExecArgument::FieldCode(_) => None,
-                })
-                .collect::<Vec<String>>();
-
-            info!("launching {:?} with arguments {:?}", program, arguments);
-
-            Command::new(program).args(arguments).spawn().unwrap();
-        }
     }
 }

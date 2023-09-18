@@ -4,13 +4,14 @@ mod modes;
 mod toffee;
 
 use modes::{DRun, Mode};
+use toffee::{Toffee, ToffeeData};
 
-struct App<M: Mode> {
+struct App<M: for<'entry> Mode<'entry>> {
     mode: M,
     input: String,
 }
 
-impl<M: Mode> App<M> {
+impl<M: for<'entry> Mode<'entry>> App<M> {
     fn new(cc: &eframe::CreationContext<'_>, mode: M) -> Self {
         let ctx = &cc.egui_ctx;
 
@@ -38,18 +39,29 @@ impl<M: Mode> App<M> {
     }
 }
 
-impl<M: Mode> eframe::App for App<M> {
+impl<M: for<'entry> Mode<'entry>> eframe::App for App<M> {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default()
             .frame(egui::Frame::none())
-            .show(ctx, |ui| self.mode.update(ui, &mut self.input));
+            .show(ctx, |ui| {
+                let toffee_data = ToffeeData {
+                    mode: "drun",
+                    counter: None,
+                    entries: self.mode.entries(""),
+                };
+                let toffee = Toffee::new("toffee", toffee_data, &mut self.input)
+                    .show(ui, |ui, entry| self.mode.entry_contents(ui, entry));
+                if let Some(selected_entry) = toffee.selected_entry {
+                    self.mode.on_selected(selected_entry);
+                }
+            });
     }
 }
 
 fn main() {
     env_logger::init();
 
-    let mode = DRun::new();
+    let mode = DRun::new(());
 
     let native_options = eframe::NativeOptions {
         initial_window_size: Some(egui::emath::Vec2::new(500.0, 200.0)),
