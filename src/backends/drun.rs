@@ -2,40 +2,33 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+use color_eyre::eyre::{eyre, Context, Report, Result};
 use desktop_file::desktop_entry::{DesktopEntry, DesktopEntryType, Exec, ExecArgument};
 use desktop_file::DesktopFile;
 use eframe::egui;
-use log::{info, trace, warn};
+use log::{error, info, trace, warn};
 use serde::Deserialize;
 
 use crate::backends::{Backend, Entries, EntriesCounter, NewBackend};
+
+pub struct DRun {
+    entries: Vec<Entry>,
+}
 
 #[derive(Deserialize)]
 pub struct Config {
     path: String,
 }
 
-pub struct Entry {
-    name: String,
-    keywords: Vec<String>,
-    exec: Exec,
-}
-
-pub struct DRun {
-    entries: Vec<Entry>,
-}
-
 impl NewBackend for DRun {
     type Config = Config;
 
     fn new(config: Self::Config) -> Self {
-        let entries = match Self::read_entries(config.path) {
-            Ok(entries) => entries,
-            Err(err) => {
-                warn!("failed to read entries - {}", err);
-                vec![]
-            }
-        };
+        let entries = Self::read_entries(config.path).unwrap_or_else(|err| {
+            warn!("failed to read entries - {}", err);
+
+            vec![]
+        });
 
         Self { entries }
     }
@@ -75,18 +68,12 @@ impl<'entry> Backend<'entry> for DRun {
     }
 
     fn on_selected(&self, entry: Self::Entry) {
-        let Exec { program, arguments } = &entry.exec;
-        let arguments = arguments
-            .iter()
-            .flat_map(|argument| match argument {
-                ExecArgument::String(s) => Some(s.clone()),
-                ExecArgument::FieldCode(_) => None,
-            })
-            .collect::<Vec<String>>();
-
-        info!("launching {:?} with arguments {:?}", program, arguments);
-
-        Command::new(program).args(arguments).spawn().unwrap();
+        match entry.launch() {
+            Ok(_) => {}
+            Err(err) => {
+                error!("launch failed - {}", err);
+            }
+        }
     }
 }
 
@@ -112,50 +99,100 @@ impl DRun {
                 }
             })
             // Read each file, reporting entries ignored due to errors
-            .flat_map(|dir_entry| {
-                let entry = Self::read_entry(dir_entry.path());
-                match entry {
-                    Ok(Some(entry)) => Some(entry),
-                    Ok(None) => {
-                        trace!("ignoring {:?}", dir_entry);
-                        None
-                    }
-                    Err(err) => {
-                        warn!("ignoring {:?} due to error - {}", dir_entry, err);
-                        None
-                    }
+            .flat_map(|dir_entry| match Entry::read(dir_entry.path()) {
+                EntryResult::Ok(entry) => Some(entry),
+                EntryResult::Ignored => {
+                    trace!("ignoring {:?}", dir_entry);
+                    None
+                }
+                EntryResult::Err(err) => {
+                    warn!("ignoring {:?} due to error - {}", dir_entry, err);
+                    None
                 }
             })
             .collect();
 
         Ok(entries)
     }
+}
 
-    fn read_entry<P: AsRef<Path>>(path: P) -> Result<Option<Entry>, String> {
-        let path = path.as_ref();
+pub enum EntryResult<T, E> {
+    Ok(T),
+    Ignored,
+    Err(E),
+}
 
-        let contents = fs::read_to_string(path)
-            .map_err(|err| format!("failed to read desktop file {:?} - {}", path, err))?;
-        let file = DesktopFile::parse(&contents)
-            .map_err(|err| format!("failed to parse desktop file {:?} - {}", path, err))?;
-        let desktop_entry = DesktopEntry::try_from_file(&file)
-            .map_err(|err| format!("failed to parse desktop entry {:?} - {}", path, err))?;
+impl<T, E> From<Result<Option<T>, E>> for EntryResult<T, E> {
+    fn from(value: Result<Option<T>, E>) -> Self {
+        match value {
+            Ok(Some(entry)) => EntryResult::Ok(entry),
+            Ok(None) => EntryResult::Ignored,
+            Err(err) => EntryResult::Err(err),
+        }
+    }
+}
 
-        let common = desktop_entry.common;
-        let app = match desktop_entry.for_type {
-            DesktopEntryType::Application(app) => app,
-            _ => return Ok(None),
-        };
+pub struct Entry {
+    name: String,
+    keywords: Vec<String>,
+    exec: Exec,
+}
 
-        // HACK: handle entries we can't run
-        if app.exec.is_none() {
-            return Ok(None);
+impl Entry {
+    fn read<P: AsRef<Path>>(path: P) -> EntryResult<Self, Report> {
+        fn read(path: &Path) -> Result<Option<Entry>> {
+            // Hack to avoid having to move to nightly to implement Try for EntryResult
+            #[allow(non_snake_case)]
+            let Ignored = Ok(None);
+
+            let contents = fs::read_to_string(path)
+                .wrap_err_with(|| format!("failed to read desktop file {path:?}"))?;
+            let file = DesktopFile::parse(&contents)
+                .map_err(|_| eyre!("TODO: fix errors from desktop-file"))
+                .wrap_err_with(|| format!("failed to parse desktop file {path:?}"))?;
+            let desktop_entry = DesktopEntry::try_from_file(&file)
+                .wrap_err_with(|| format!("failed to parse desktop entry {path:?}"))?;
+
+            let common = desktop_entry.common;
+            let app = match desktop_entry.for_type {
+                DesktopEntryType::Application(app) => app,
+                _ => return Ignored,
+            };
+
+            let name = common.name;
+            let keywords = app.keywords.unwrap_or_default();
+            let exec = match app.exec {
+                Some(exec) => exec,
+                None => return Ignored,
+            };
+
+            Ok(Some(Entry {
+                name,
+                keywords,
+                exec,
+            }))
         }
 
-        Ok(Some(Entry {
-            name: common.name,
-            keywords: app.keywords.unwrap_or_default(),
-            exec: app.exec.unwrap(),
-        }))
+        read(path.as_ref()).into()
+    }
+
+    fn launch(&self) -> Result<()> {
+        let Exec { program, arguments } = &self.exec;
+        let arguments = arguments
+            .iter()
+            .flat_map(|argument| match argument {
+                ExecArgument::String(s) => Some(s.clone()),
+                ExecArgument::FieldCode(_) => None,
+            })
+            .collect::<Vec<String>>();
+
+        info!("launching {:?} with arguments {:?}", program, arguments);
+
+        Command::new(program)
+            .args(arguments)
+            .spawn()
+            .wrap_err("spawn failed")?;
+
+        Ok(())
     }
 }
