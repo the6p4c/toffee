@@ -64,11 +64,15 @@ impl<M: for<'entry> Mode<'entry>> eframe::App for App<M> {
     }
 }
 
-fn run<M: for<'entry> Mode<'entry> + 'static>(backend: M) -> Result<()> {
+fn run<M: for<'entry> Mode<'entry> + NewMode + 'static>(config: toml::Value) -> Result<()> {
+    let config = M::Config::deserialize(config).wrap_err("invalid specific mode config")?;
+    let backend = M::new(config);
+
     let native_options = eframe::NativeOptions {
         initial_window_size: Some(egui::emath::Vec2::new(500.0, 200.0)),
         ..eframe::NativeOptions::default()
     };
+
     eframe::run_native(
         "toffee",
         native_options,
@@ -99,13 +103,9 @@ fn main() -> Result<()> {
         ModeConfig::deserialize(mode.clone()).wrap_err("invalid common mode config")?;
 
     match mode_common.backend.as_str() {
-        "drun" => {
-            let config = <DRun as NewMode>::Config::deserialize(mode.clone())
-                .wrap_err("invalid drun config")?;
-            run(DRun::new(config))
-        }
-        _ => Err(eyre!("unknown backend {}", mode_common.backend)),
-    }?;
+        "drun" => run::<DRun>(mode.clone())?,
+        _ => Err(eyre!("unknown backend {}", mode_common.backend))?,
+    }
 
     Ok(())
 }

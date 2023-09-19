@@ -3,9 +3,10 @@ mod drun;
 use eframe::egui;
 
 pub use drun::DRun;
+use serde::Deserialize;
 
 pub trait NewMode {
-    type Config;
+    type Config: for<'de> Deserialize<'de>;
 
     fn new(config: Self::Config) -> Self;
 }
