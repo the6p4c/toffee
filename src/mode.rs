@@ -84,10 +84,12 @@ impl<M: for<'entry> Backend<'entry>> eframe::App for App<M> {
         egui::CentralPanel::default()
             .frame(egui::Frame::none())
             .show(ctx, |ui| {
+                let entries = self.backend.entries(&self.input);
+
                 let toffee_data = ToffeeData {
                     mode: &self.mode_name,
-                    counter: None, // FIXME: should calculate or return from Backend::entries
-                    entries: self.backend.entries(&self.input),
+                    counter: entries.counter.map(|c| (c.visible, c.total)),
+                    entries: entries.entries,
                 };
 
                 let toffee = Toffee::new("toffee", toffee_data, &mut self.input)

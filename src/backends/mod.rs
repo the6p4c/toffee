@@ -14,8 +14,18 @@ pub trait NewBackend {
 pub trait Backend<'entry> {
     type Entry: Copy;
 
-    fn entries(&'entry self, query: &str) -> Vec<Self::Entry>;
+    fn entries(&'entry self, query: &str) -> Entries<Self::Entry>;
     fn entry_contents(&self, ui: &mut egui::Ui, entry: Self::Entry);
 
     fn on_selected(&self, entry: Self::Entry);
+}
+
+pub struct Entries<Entry> {
+    pub counter: Option<EntriesCounter>,
+    pub entries: Vec<Entry>,
+}
+
+pub struct EntriesCounter {
+    pub visible: usize,
+    pub total: usize,
 }

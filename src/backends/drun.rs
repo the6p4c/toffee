@@ -8,7 +8,7 @@ use eframe::egui;
 use log::{info, trace, warn};
 use serde::Deserialize;
 
-use crate::backends::{Backend, NewBackend};
+use crate::backends::{Backend, Entries, EntriesCounter, NewBackend};
 
 #[derive(Deserialize)]
 pub struct Config {
@@ -44,8 +44,9 @@ impl NewBackend for DRun {
 impl<'entry> Backend<'entry> for DRun {
     type Entry = &'entry Entry;
 
-    fn entries(&'entry self, query: &str) -> Vec<Self::Entry> {
-        self.entries
+    fn entries(&'entry self, query: &str) -> Entries<Self::Entry> {
+        let entries = self
+            .entries
             .iter()
             .filter(|entry| {
                 let query = &query.to_lowercase();
@@ -58,7 +59,15 @@ impl<'entry> Backend<'entry> for DRun {
 
                 name_match || keyword_match
             })
-            .collect()
+            .collect::<Vec<_>>();
+
+        Entries {
+            counter: Some(EntriesCounter {
+                visible: entries.len(),
+                total: self.entries.len(),
+            }),
+            entries,
+        }
     }
 
     fn entry_contents(&self, ui: &mut egui::Ui, entry: Self::Entry) {
