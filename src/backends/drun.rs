@@ -1,13 +1,14 @@
+use std::fs;
+use std::path::Path;
+use std::process::Command;
+
 use desktop_file::desktop_entry::{DesktopEntry, DesktopEntryType, Exec, ExecArgument};
 use desktop_file::DesktopFile;
 use eframe::egui;
 use log::{info, trace, warn};
 use serde::Deserialize;
-use std::fs;
-use std::path::Path;
-use std::process::Command;
 
-use crate::modes::{Mode, NewMode};
+use crate::backends::{Backend, NewBackend};
 
 #[derive(Deserialize)]
 pub struct Config {
@@ -24,7 +25,7 @@ pub struct DRun {
     entries: Vec<Entry>,
 }
 
-impl NewMode for DRun {
+impl NewBackend for DRun {
     type Config = Config;
 
     fn new(config: Self::Config) -> Self {
@@ -40,7 +41,7 @@ impl NewMode for DRun {
     }
 }
 
-impl<'entry> Mode<'entry> for DRun {
+impl<'entry> Backend<'entry> for DRun {
     type Entry = &'entry Entry;
 
     fn entries(&'entry self, query: &str) -> Vec<Self::Entry> {
@@ -67,7 +68,7 @@ impl<'entry> Mode<'entry> for DRun {
     fn on_selected(&self, entry: Self::Entry) {
         let Exec { program, arguments } = &entry.exec;
         let arguments = arguments
-            .into_iter()
+            .iter()
             .flat_map(|argument| match argument {
                 ExecArgument::String(s) => Some(s.clone()),
                 ExecArgument::FieldCode(_) => None,
@@ -103,7 +104,7 @@ impl DRun {
             })
             // Read each file, reporting entries ignored due to errors
             .flat_map(|dir_entry| {
-                let entry = Self::read_entry(&dir_entry.path());
+                let entry = Self::read_entry(dir_entry.path());
                 match entry {
                     Ok(Some(entry)) => Some(entry),
                     Ok(None) => {
@@ -144,7 +145,7 @@ impl DRun {
 
         Ok(Some(Entry {
             name: common.name,
-            keywords: app.keywords.unwrap_or_else(|| vec![]),
+            keywords: app.keywords.unwrap_or_default(),
             exec: app.exec.unwrap(),
         }))
     }

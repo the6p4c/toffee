@@ -1,17 +1,17 @@
 mod drun;
 
 use eframe::egui;
-
-pub use drun::DRun;
 use serde::Deserialize;
 
-pub trait NewMode {
+pub use drun::DRun;
+
+pub trait NewBackend {
     type Config: for<'de> Deserialize<'de>;
 
     fn new(config: Self::Config) -> Self;
 }
 
-pub trait Mode<'entry> {
+pub trait Backend<'entry> {
     type Entry: Copy;
 
     fn entries(&'entry self, query: &str) -> Vec<Self::Entry>;
