@@ -7,7 +7,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use crate::modes::{Mode, NewMode};
+use crate::backends::{Backend, NewBackend};
 
 #[derive(Deserialize)]
 pub struct Config {
@@ -24,7 +24,7 @@ pub struct DRun {
     entries: Vec<Entry>,
 }
 
-impl NewMode for DRun {
+impl NewBackend for DRun {
     type Config = Config;
 
     fn new(config: Self::Config) -> Self {
@@ -40,7 +40,7 @@ impl NewMode for DRun {
     }
 }
 
-impl<'entry> Mode<'entry> for DRun {
+impl<'entry> Backend<'entry> for DRun {
     type Entry = &'entry Entry;
 
     fn entries(&'entry self, query: &str) -> Vec<Self::Entry> {
