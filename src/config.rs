@@ -12,6 +12,7 @@ pub struct Config {
 
 #[derive(Deserialize, Debug)]
 pub struct ToffeeConfig {
+    pub debug: Option<bool>,
     pub initial_size: Option<(usize, usize)>,
 }
 

@@ -8,10 +8,11 @@ use color_eyre::eyre::{bail, eyre, Context, Result};
 use log::info;
 
 use crate::backends::{Backend, NewBackend};
-use crate::config::Config;
+use crate::config::{Config, ToffeeConfig};
 use crate::toffee::{Toffee, ToffeeData};
 
 struct Mode<B: for<'entry> Backend<'entry>> {
+    config: ToffeeConfig,
     name: String,
     backend: B,
     query: String,
@@ -59,9 +60,10 @@ impl<B: for<'entry> Backend<'entry> + NewBackend + 'static> Mode<B> {
 
         // start the backend
         // TODO: error handling
-        let (_, mode_config) = config.split(&name).unwrap();
+        let (toffee_config, mode_config) = config.split(&name).unwrap();
 
         Self {
+            config: toffee_config,
             name,
             backend: B::new(cc, mode_config.backend),
             query: String::new(),
@@ -71,24 +73,33 @@ impl<B: for<'entry> Backend<'entry> + NewBackend + 'static> Mode<B> {
 
 impl<B: for<'entry> Backend<'entry>> eframe::App for Mode<B> {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let toffee = |ui: &mut egui::Ui| {
+            let entries = self.backend.entries(&self.query);
+
+            let toffee_data = ToffeeData {
+                mode: &self.name,
+                counter: entries.counter.map(|c| (c.visible, c.total)),
+                entries: entries.entries,
+            };
+
+            let toffee = Toffee::new("toffee", toffee_data, &mut self.query)
+                .show(ui, |ui, entry| self.backend.entry_contents(ui, entry));
+
+            if let Some(selected_entry) = toffee.selected_entry {
+                self.backend.on_selected(selected_entry);
+            }
+        };
+
         egui::CentralPanel::default()
             .frame(egui::Frame::none())
-            .show(ctx, |ui| {
-                let entries = self.backend.entries(&self.query);
-
-                let toffee_data = ToffeeData {
-                    mode: &self.name,
-                    counter: entries.counter.map(|c| (c.visible, c.total)),
-                    entries: entries.entries,
-                };
-
-                let toffee = Toffee::new("toffee", toffee_data, &mut self.query)
-                    .show(ui, |ui, entry| self.backend.entry_contents(ui, entry));
-
-                if let Some(selected_entry) = toffee.selected_entry {
-                    self.backend.on_selected(selected_entry);
-                }
-            });
+            .show(ctx, toffee);
+        if self.config.debug.unwrap_or(false) {
+            egui::SidePanel::right("right")
+                .resizable(false)
+                .show(ctx, |ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| ctx.inspection_ui(ui))
+                });
+        }
     }
 }
 
