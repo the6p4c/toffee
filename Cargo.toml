@@ -7,10 +7,11 @@ edition = "2021"
 members = ["crates/desktop-file", "crates/desktop-file-cli"]
 
 [dependencies]
-eframe = "0.22.0"
+eframe = "0.23.0"
 desktop-file = { path = "crates/desktop-file" }
 log = "0.4.20"
 env_logger = "0.10.0"
 serde = { version = "1.0.188", features = ["derive"] }
-toml = "0.8.0"
+toml = "0.8.1"
 color-eyre = "0.6.2"
+egui = "0.23.0"
