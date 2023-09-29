@@ -7,12 +7,12 @@ use toml::Table;
 #[derive(Deserialize, Debug)]
 pub struct Config {
     pub toffee: ToffeeConfig,
-    pub modes: Option<Table>,
+    modes: Option<Table>,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct ToffeeConfig {
-    initial_size: Option<(usize, usize)>,
+    pub initial_size: Option<(usize, usize)>,
 }
 
 impl FromStr for Config {
@@ -24,13 +24,30 @@ impl FromStr for Config {
 }
 
 impl Config {
-    pub fn mode(&self, name: &str) -> Result<ModeConfig> {
+    fn mode(&self, name: &str) -> Result<ModeConfig> {
         let modes = self.modes.as_ref().ok_or(eyre!("no modes configured"))?;
         let mode = modes.get(name).ok_or(eyre!("unknown mode {name}"))?;
         let mode_config =
             ModeConfig::deserialize(mode.clone()).wrap_err("failed to deserialize config")?;
 
         Ok(mode_config)
+    }
+
+    pub fn backend(&self, name: &str) -> Result<String> {
+        Ok(self.mode(name)?.meta.backend)
+    }
+
+    pub fn split<M: for<'de> Deserialize<'de>>(
+        self,
+        name: &str,
+    ) -> Result<(ToffeeConfig, ModeConfig<M>)> {
+        let mode = self.mode(name)?;
+        let mode = ModeConfig {
+            meta: mode.meta,
+            backend: M::deserialize(mode.backend)?,
+        };
+
+        Ok((self.toffee, mode))
     }
 }
 
@@ -45,14 +62,4 @@ pub struct ModeConfig<C = Table> {
 pub struct MetaConfig {
     pub name: Option<String>,
     pub backend: String,
-}
-
-impl ModeConfig {
-    // TODO: rename me
-    pub fn drill_down<C: for<'de> Deserialize<'de>>(self) -> Result<ModeConfig<C>> {
-        Ok(ModeConfig {
-            meta: self.meta,
-            backend: C::deserialize(self.backend)?,
-        })
-    }
 }
