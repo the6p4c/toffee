@@ -63,7 +63,7 @@ impl<B: for<'entry> Backend<'entry> + NewBackend + 'static> Mode<B> {
 
         Self {
             name,
-            backend: B::new(mode_config.backend),
+            backend: B::new(cc, mode_config.backend),
             query: String::new(),
         }
     }

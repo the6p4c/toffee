@@ -23,7 +23,7 @@ pub struct Config {
 impl NewBackend for DRun {
     type Config = Config;
 
-    fn new(config: Self::Config) -> Self {
+    fn new(_cc: &eframe::CreationContext<'_>, config: Self::Config) -> Self {
         let entries = Self::read_entries(config.path).unwrap_or_else(|err| {
             warn!("failed to read entries - {}", err);
 

@@ -8,7 +8,7 @@ pub use drun::DRun;
 pub trait NewBackend {
     type Config: for<'de> Deserialize<'de>;
 
-    fn new(config: Self::Config) -> Self;
+    fn new(cc: &eframe::CreationContext<'_>, config: Self::Config) -> Self;
 }
 
 pub trait Backend<'entry> {
