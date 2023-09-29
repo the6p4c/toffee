@@ -11,13 +11,8 @@ pub struct Config {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct ToffeeConfig {}
-
-#[derive(Deserialize, Debug)]
-pub struct ModeConfig<C = Table> {
-    pub backend: String,
-    #[serde(flatten)]
-    pub backend_config: C,
+pub struct ToffeeConfig {
+    initial_size: Option<(usize, usize)>,
 }
 
 impl FromStr for Config {
@@ -39,12 +34,25 @@ impl Config {
     }
 }
 
+#[derive(Deserialize, Debug)]
+pub struct ModeConfig<C = Table> {
+    pub meta: MetaConfig,
+    #[serde(flatten)]
+    pub backend: C,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct MetaConfig {
+    pub name: Option<String>,
+    pub backend: String,
+}
+
 impl ModeConfig {
     // TODO: rename me
     pub fn drill_down<C: for<'de> Deserialize<'de>>(self) -> Result<ModeConfig<C>> {
         Ok(ModeConfig {
-            backend: self.backend,
-            backend_config: C::deserialize(self.backend_config)?,
+            meta: self.meta,
+            backend: C::deserialize(self.backend)?,
         })
     }
 }

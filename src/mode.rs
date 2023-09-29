@@ -20,8 +20,8 @@ impl<B: for<'entry> Backend<'entry> + NewBackend> Mode<B> {
         let mode_config = mode_config.drill_down()?;
 
         Ok(Self {
-            name: name.into(),
-            backend: B::new(mode_config.backend_config),
+            name: mode_config.meta.name.unwrap_or_else(|| name.into()),
+            backend: B::new(mode_config.backend),
         })
     }
 }

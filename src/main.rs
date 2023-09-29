@@ -23,7 +23,7 @@ fn main() -> Result<()> {
     let config = config.parse::<Config>()?;
 
     let mode_config = config.mode(&mode)?;
-    let backend = mode_config.backend.as_str();
+    let backend = mode_config.meta.backend.as_str();
 
     info!("launching mode {mode} with backend {backend}");
 
