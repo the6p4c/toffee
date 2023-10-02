@@ -1,11 +1,13 @@
+use std::env::{self, VarError};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use color_eyre::eyre::{eyre, Context, Report, Result};
+use color_eyre::eyre::{ensure, eyre, Context, Report, Result};
 use desktop_file::desktop_entry::{DesktopEntry, DesktopEntryType, Exec, ExecArgument};
 use desktop_file::DesktopFile;
 use eframe::egui;
+use itertools::chain;
 use log::{error, info, trace, warn};
 use serde::Deserialize;
 
@@ -16,19 +18,103 @@ pub struct DRun {
 }
 
 #[derive(Deserialize)]
+#[serde(untagged)]
+enum Paths {
+    None,
+    One(PathBuf),
+    Many(Vec<PathBuf>),
+}
+
+impl Paths {
+    fn into_vec(self) -> Vec<PathBuf> {
+        match self {
+            Self::None => vec![],
+            Self::One(path) => vec![path],
+            Self::Many(paths) => paths,
+        }
+    }
+}
+
+impl Default for Paths {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+// why is serde like this
+fn bool_true() -> bool {
+    true
+}
+
+#[derive(Deserialize)]
 pub struct Config {
-    path: String,
+    #[serde(default = "bool_true")]
+    include_system: bool,
+    #[serde(default = "bool_true")]
+    include_user: bool,
+    #[serde(default)]
+    include: Paths,
+}
+
+fn xdg(name: &str, default: &[impl AsRef<Path>]) -> Result<Vec<PathBuf>> {
+    let value = match env::var(name) {
+        Ok(value) => Ok(Some(value)),
+        Err(VarError::NotPresent) => Ok(None),
+        Err(err) => Err(err).wrap_err_with(|| format!("failed to read ${name}")),
+    }?;
+
+    let paths: Vec<PathBuf> = match value {
+        Some(value) => value.split(':').map(|path| path.into()).collect(),
+        None => default.iter().map(|path| path.as_ref().into()).collect(),
+    };
+
+    let paths = paths
+        .iter()
+        .map(|path| {
+            ensure!(
+                path.is_absolute(),
+                "path {path:?} in ${name} should be absolute"
+            );
+
+            Ok(path.join("applications"))
+        })
+        .collect::<Result<_, _>>()?;
+
+    Ok(paths)
 }
 
 impl NewBackend for DRun {
     type Config = Config;
 
     fn new(_cc: &eframe::CreationContext<'_>, config: Self::Config) -> Self {
-        let entries = Self::read_entries(config.path).unwrap_or_else(|err| {
-            warn!("failed to read entries - {}", err);
+        let include_system = config
+            .include_system
+            .then(|| xdg("XDG_DATA_DIRS", &["/usr/local/share", "/usr/share"]))
+            .transpose()
+            .expect("include_system paths to be ok") // TODO: report error properly
+            .unwrap_or_default();
+        let include_user = config
+            .include_user
+            .then(|| {
+                let home = env::var("HOME").wrap_err("$HOME should be set")?;
+                let default = PathBuf::from(home).join(".local/share");
 
-            vec![]
-        });
+                xdg("XDG_DATA_HOME", &[default])
+            })
+            .transpose()
+            .expect("include-user paths to be ok") // TODO: report error properly
+            .unwrap_or_default();
+
+        let include = chain!(include_system, include_user, config.include.into_vec());
+        let entries = include
+            .flat_map(|path| {
+                Self::read_entries(path).unwrap_or_else(|err| {
+                    warn!("failed to read entries - {}", err);
+
+                    vec![]
+                })
+            })
+            .collect();
 
         Self { entries }
     }
