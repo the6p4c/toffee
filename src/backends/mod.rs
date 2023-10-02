@@ -1,9 +1,11 @@
 mod drun;
+mod emoji;
 
 use eframe::egui;
 use serde::Deserialize;
 
 pub use drun::DRun;
+pub use emoji::Emoji;
 
 pub trait NewBackend {
     type Config: for<'de> Deserialize<'de>;
