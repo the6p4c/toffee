@@ -5,6 +5,7 @@ mod toffee;
 use std::{env, fs};
 
 use color_eyre::eyre::{bail, eyre, Context, Result};
+use egui::ViewportBuilder;
 use log::info;
 
 use crate::backends::{Backend, NewBackend};
@@ -23,7 +24,7 @@ impl<B: for<'entry> Backend<'entry> + NewBackend + 'static> Mode<B> {
         let (initial_width, initial_height) = config.toffee.initial_size.unwrap_or((500, 200));
 
         let native_options = eframe::NativeOptions {
-            initial_window_size: Some(egui::emath::Vec2::new(
+            viewport: ViewportBuilder::default().with_inner_size(egui::emath::Vec2::new(
                 initial_width as f32,
                 initial_height as f32,
             )),
