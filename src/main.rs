@@ -120,7 +120,6 @@ fn main() -> Result<()> {
     info!("launching mode {mode} with backend {backend}");
     match backend.as_str() {
         "drun" => Mode::<backends::DRun>::start(config, mode),
-        "emoji" => Mode::<backends::Emoji>::start(config, mode),
         _ => bail!("unknown backend {backend}"),
     }
 }
